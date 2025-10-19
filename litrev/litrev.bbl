@@ -1,0 +1,48 @@
+\begin{thebibliography}{8}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Bengio et~al.(2009)Bengio, Louradour, Collobert, and Weston]{bengio2009}
+Yoshua Bengio, J{\'e}r{\^o}me Louradour, Ronan Collobert, and Jason Weston.
+\newblock Curriculum learning.
+\newblock In \emph{Proceedings of the 26th Annual International Conference on Machine Learning (ICML)}, pages 41--48, 2009.
+
+\bibitem[Kingma and Welling(2014)]{kingma2014}
+Diederik~P. Kingma and Max Welling.
+\newblock Auto-encoding variational bayes.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2014.
+
+\bibitem[Koh and Liang(2017)]{koh2017influence}
+Pang~Wei Koh and Percy Liang.
+\newblock Understanding black-box predictions via influence functions.
+\newblock In \emph{International Conference on Machine Learning (ICML)}, pages 1885--1894, 2017.
+
+\bibitem[Mnih et~al.(2015)Mnih, Kavukcuoglu, Silver, Rusu, Veness, Bellemare, Graves, Riedmiller, Fidjeland, Ostrovski, et~al.]{mnih2015dqn}
+Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei~A. Rusu, Joel Veness, Marc~G. Bellemare, Alex Graves, Martin Riedmiller, Andreas~K. Fidjeland, Georg Ostrovski, et~al.
+\newblock Human-level control through deep reinforcement learning.
+\newblock \emph{Nature}, 518\penalty0 (7540):\penalty0 529--533, 2015.
+
+\bibitem[Owen(2013)]{owen2013}
+Art~B. Owen.
+\newblock \emph{Monte Carlo Theory, Methods and Examples}.
+\newblock Stanford University, 2013.
+
+\bibitem[Rezende and Mohamed(2015)]{rezende2015}
+Danilo~Jimenez Rezende and Shakir Mohamed.
+\newblock Variational inference with normalizing flows.
+\newblock In \emph{International Conference on Machine Learning (ICML)}, pages 1530--1538, 2015.
+
+\bibitem[Rubinstein and Kroese(2007)]{rubinstein2007}
+Reuven~Y. Rubinstein and Dirk~P. Kroese.
+\newblock \emph{Simulation and the Monte Carlo Method}.
+\newblock Wiley, 2007.
+
+\bibitem[Schaul et~al.(2016)Schaul, Quan, Antonoglou, and Silver]{schaul2016per}
+Tom Schaul, John Quan, Ioannis Antonoglou, and David Silver.
+\newblock Prioritized experience replay.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2016.
+
+\end{thebibliography}

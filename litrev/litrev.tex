@@ -41,7 +41,7 @@
 
 \subsection{Project Description}
 
-This project will investigate prioritized replay and non-IID sampling techniques to improve the sample efficiency of chess evaluation network training. Traditional approaches sample training positions uniformly from game databases, but this fails to account for the fact that not all positions provide equal learning value. Using Google DeepMind's ChessBench dataset (10 million chess games with 15 billion Stockfish-annotated positions), I will implement adaptive buffers that replay high-weighted positions more frequently, creating non-stationary training distributions that focus on challenging examples and break from traditional SGD assumptions.
+This project will investigate prioritized replay and non-IID sampling techniques to improve the sample efficiency of chess evaluation network training. Traditional approaches sample training positions uniformly from game databases, but this fails to account for the fact that not all positions provide equal learning value. Using Google DeepMind's ChessBench dataset (10 million chess games with 15 billion Stockfish-annotated positions), I will implement adaptive buffers that replay high-weighted positions more frequently, creating non-stationary training distributions that focus on challenging examples and break from traditional SGD assumptions \cite{schaul2016per}.
 
 A key innovation will be the development of **prioritized replay buffers** and **non-iid sampling strategies** that dynamically prioritize positions based on their information content. Instead of treating all training examples equally, the system will adaptively sample high-value examples more frequently, allowing the training process to focus on currently challenging positions while maintaining a balance with exploration.
 
@@ -52,10 +52,10 @@ The project will begin with **naive position difficulty scoring** - simple heuri
 The primary aim is to develop and validate prioritized replay and non-IID sampling techniques for chess evaluation network training that improve sample efficiency compared to random sampling. Key objectives include:
 
 \begin{itemize}
-    \item Implement prioritized replay buffers that adaptively sample high-information positions more frequently
-    \item Design non-iid sampling strategies that break from uniform distribution assumptions and create non-stationary training distributions
+    \item Implement prioritized replay buffers that adaptively sample high-information positions more frequently \cite{schaul2016per,mnih2015dqn}
+    \item Design non-iid sampling strategies that break from uniform distribution assumptions and create non-stationary training distributions (importance sampling background: \cite{rubinstein2007,owen2013})
     \item Develop and compare different sample weighting functions integrated with replay mechanisms, starting with naive position difficulty scoring
-    \item Progress from simple heuristics to sophisticated information-theoretic measures within the prioritized replay framework
+    \item Progress from simple heuristics to sophisticated information-theoretic measures within the prioritized replay framework (influence functions: \cite{koh2017influence})
     \item Evaluate improvements in training speed and evaluation accuracy through controlled experiments comparing uniform vs. prioritized sampling
 \end{itemize}
 
@@ -64,8 +64,8 @@ The primary aim is to develop and validate prioritized replay and non-IID sampli
 Before commencing the main implementation, I need to:
 \begin{itemize}
     \item Acquire datasets of labelled chess positions
-    \item Understand information-theoretic measures in the context of neural network training
-    \item Review existing approaches to sample-efficient training and curriculum learning
+    \item Understand information-theoretic measures in the context of neural network training (representation learning background: \cite{kingma2014,rezende2015})
+    \item Review existing approaches to sample-efficient training and curriculum learning \cite{bengio2009}
 \end{itemize}
 
 \subsection{Deliverables}
@@ -100,57 +100,62 @@ Before commencing the main implementation, I need to:
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[x=0.5cm, y=0.5cm]
+\begin{tikzpicture}[x=0.5cm, y=0.7cm, every node/.style={font=\small}]
     % Timeline axis
-    \draw[->] (0,0) -- (24,0) node[right] {Weeks (Term 1-3)};
-    \foreach \x in {0,4,8,12,16,20,24} {
+    \draw[->] (0,0) -- (24,0) node[right] {Weeks};
+    % ticks and labels (fewer to avoid overlap)
+    \foreach \x/\lbl in {0/0,4/4,8/8,12/12,16/16,20/20,24/24} {
         \draw (\x,-0.1) -- (\x,0.1);
-        \node[below] at (\x,-0.1) {\x};
+        \node[below=2pt] at (\x,-0.1) {\lbl};
     }
 
-    % Tasks
-    \node[left] at (0,1) {Literature Review};
-    \draw[fill=blue!30] (0,0.8) rectangle (4,1.2);
+    % Tasks (increased vertical spacing and left-aligned)
+    \node[left] at (-0.5,5.2) {Final Report};
+    \draw[fill=orange!30,draw=black] (18,5) rectangle (24,5.4);
 
-    \node[left] at (0,2) {Data Preparation};
-    \draw[fill=green!30] (2,1.8) rectangle (8,2.2);
+    \node[left] at (-0.5,4) {Training Integration};
+    \draw[fill=purple!30,draw=black] (14,3.8) rectangle (20,4.2);
 
-    \node[left] at (0,3) {Replay Buffer Implementation};
-    \draw[fill=yellow!30] (6,2.8) rectangle (12,3.2);
+    \node[left] at (-0.5,3) {Sampling Methods};
+    \draw[fill=red!30,draw=black] (10,2.8) rectangle (16,3.2);
 
-    \node[left] at (0,4) {Sampling Methods};
-    \draw[fill=red!30] (10,3.8) rectangle (16,4.2);
+    \node[left] at (-0.5,2) {Replay Buffer Implementation};
+    \draw[fill=yellow!30,draw=black] (6,1.8) rectangle (12,2.2);
 
-    \node[left] at (0,5) {Training Integration};
-    \draw[fill=purple!30] (14,4.8) rectangle (20,5.2);
+    \node[left] at (-0.5,1) {Data Preparation};
+    \draw[fill=green!30,draw=black] (2,0.8) rectangle (8,1.2);
 
-    \node[left] at (0,6) {Final Report};
-    \draw[fill=orange!30] (18,5.8) rectangle (24,6.2);
+    \node[left] at (-0.5,0) {Literature Review};
+    \draw[fill=blue!30,draw=black] (0,-0.2) rectangle (4,0.2);
 
-    % Legend
-    \node[below right] at (0,0) {Legend:};
-    \draw[fill=blue!30] (2,-0.5) rectangle (3,-0.3) node[right] {Literature};
-    \draw[fill=green!30] (2,-0.8) rectangle (3,-0.6) node[right] {Data};
-    \draw[fill=yellow!30] (2,-1.1) rectangle (3,-0.9) node[right] {Replay Buffer};
-    \draw[fill=red!30] (2,-1.4) rectangle (3,-1.2) node[right] {Sampling};
-    \draw[fill=purple!30] (2,-1.7) rectangle (3,-1.5) node[right] {Training};
-    \draw[fill=orange!30] (2,-2.0) rectangle (3,-1.8) node[right] {Report};
+    % Legend (moved to top-right inside the figure)
+    \begin{scope}[shift={(25,5.2)}]
+        \node[anchor=west,font=\small] at (0,0.6) {Legend:};
+        \draw[fill=blue!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Literature};
+        \begin{scope}[yshift=-0.4cm]
+            \draw[fill=green!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Data};
+        \end{scope}
+        \begin{scope}[yshift=-0.8cm]
+            \draw[fill=yellow!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Replay Buffer};
+        \end{scope}
+        \begin{scope}[yshift=-1.2cm]
+            \draw[fill=red!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Sampling};
+        \end{scope}
+        \begin{scope}[yshift=-1.6cm]
+            \draw[fill=purple!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Training};
+        \end{scope}
+        \begin{scope}[yshift=-2.0cm]
+            \draw[fill=orange!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Report};
+        \end{scope}
+    \end{scope}
 \end{tikzpicture}
 \caption{Project Timeline Gantt Chart}
 \label{fig:gantt}
 \end{figure}
 
 \subsection{References}
-
-\begin{enumerate}
-    \item Kingma, D.P., Welling, M. ``Auto-Encoding Variational Bayes.'' ICLR (2014).
-    \item Rezende, D., Mohamed, S. ``Variational Inference with Normalizing Flows.'' ICML (2015).
-    \item Klein, D. ``Neural Networks for Chess.'' arXiv:2209.01506 (2022).
-    \item Bengio, Y., et al. ``Curriculum Learning.'' Proceedings of the 26th International Conference on Machine Learning (2009).
-    \item Lake, B.M., et al. ``Building Machines That Learn and Think Like People.'' Behavioral and Brain Sciences 40, e253 (2017).
-    \item Silver, D., et al. ``Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm.'' arXiv:1712.01815 (2017).
-    \item Ruoss, A., et al. ``Amortized Planning with Large-Scale Transformers: A Case Study on Chess.'' NeurIPS (2024). Available at: \url{https://github.com/google-deepmind/searchless_chess}
-\end{enumerate}
+\bibliographystyle{plainnat}
+\bibliography{litrev}
 
 \newpage
 
