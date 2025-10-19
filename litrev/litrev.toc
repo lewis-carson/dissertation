@@ -1,0 +1,23 @@
+\contentsline {section}{\numberline {1}Project Plan}{2}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Project Details}{2}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Project Description}{2}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Aims and Objectives}{2}{subsection.1.3}%
+\contentsline {subsection}{\numberline {1.4}Preliminary Preparation}{3}{subsection.1.4}%
+\contentsline {subsection}{\numberline {1.5}Deliverables}{3}{subsection.1.5}%
+\contentsline {subsubsection}{\numberline {1.5.1}Basic Deliverables}{3}{subsubsection.1.5.1}%
+\contentsline {subsubsection}{\numberline {1.5.2}Intermediate Deliverables}{3}{subsubsection.1.5.2}%
+\contentsline {subsubsection}{\numberline {1.5.3}Advanced Deliverables}{3}{subsubsection.1.5.3}%
+\contentsline {subsection}{\numberline {1.6}Timeline}{4}{subsection.1.6}%
+\contentsline {subsection}{\numberline {1.7}References}{4}{subsection.1.7}%
+\contentsline {section}{\numberline {2}Literature Survey}{5}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Introduction to Sample Efficiency in Chess Evaluation Networks}{5}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Key Themes in Sample-Efficient Chess Training}{5}{subsection.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.1}Prioritized Replay and Non-IID Sampling}{5}{subsubsection.2.2.1}%
+\contentsline {subsubsection}{\numberline {2.2.2}Sample Weighting Functions}{6}{subsubsection.2.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.3}Information-Theoretic Training Objectives}{6}{subsubsection.2.2.3}%
+\contentsline {subsubsection}{\numberline {2.2.4}Curriculum Learning and Synthetic Data}{6}{subsubsection.2.2.4}%
+\contentsline {subsection}{\numberline {2.3}Assessment and Relation to Project}{6}{subsection.2.3}%
+\contentsline {section}{\numberline {3}Critical Comparison with ChatGPT}{7}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Prompts Used}{7}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}AI-Generated Literature Survey}{7}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Observations on Quality and Accuracy}{7}{subsection.3.3}%

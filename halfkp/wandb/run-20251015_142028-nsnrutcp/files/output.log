@@ -1,0 +1,45 @@
+
+Starting training with streaming dataset...
+Note: Training on full dataset across all CSV files
+
+============================================================
+Epoch 1/3
+============================================================
+Processing file 1/1: action_value-00000-of-02148_data.csv
+  Batch 0, Avg Loss: 0.498470, Current Loss: 0.498470
+  Batch 500, Avg Loss: 0.495965, Current Loss: 0.476993
+  Batch 1000, Avg Loss: 0.495685, Current Loss: 0.510552
+  Batch 1500, Avg Loss: 0.495249, Current Loss: 0.549553
+  Batch 2000, Avg Loss: 0.496046, Current Loss: 0.469227
+  Batch 2500, Avg Loss: 0.495945, Current Loss: 0.518159
+  Batch 3000, Avg Loss: 0.495635, Current Loss: 0.440338
+  Batch 3500, Avg Loss: 0.495360, Current Loss: 0.503902
+  Batch 4000, Avg Loss: 0.495152, Current Loss: 0.496555
+  Batch 4500, Avg Loss: 0.495336, Current Loss: 0.462837
+  Batch 5000, Avg Loss: 0.495275, Current Loss: 0.500102
+  Batch 5500, Avg Loss: 0.494897, Current Loss: 0.552220
+  Batch 6000, Avg Loss: 0.494927, Current Loss: 0.531817
+  Batch 6500, Avg Loss: 0.494908, Current Loss: 0.517187
+  Batch 7000, Avg Loss: 0.494961, Current Loss: 0.523521
+  Batch 7500, Avg Loss: 0.495154, Current Loss: 0.501443
+  Batch 8000, Avg Loss: 0.495141, Current Loss: 0.510171
+  Batch 8500, Avg Loss: 0.495118, Current Loss: 0.448092
+  Batch 9000, Avg Loss: 0.495025, Current Loss: 0.550818
+  Batch 9500, Avg Loss: 0.494926, Current Loss: 0.498753
+  Batch 10000, Avg Loss: 0.494855, Current Loss: 0.521844
+  Batch 10500, Avg Loss: 0.494765, Current Loss: 0.531263
+  Batch 11000, Avg Loss: 0.494747, Current Loss: 0.459212
+  Batch 11500, Avg Loss: 0.494643, Current Loss: 0.525024
+  Batch 12000, Avg Loss: 0.494556, Current Loss: 0.469430
+  Batch 12500, Avg Loss: 0.494475, Current Loss: 0.510602
+  Batch 13000, Avg Loss: 0.494417, Current Loss: 0.476158
+Traceback (most recent call last):
+  File "/Users/lewis/disschess/halfkp/train.py", line 463, in <module>
+    main()
+  File "/Users/lewis/disschess/halfkp/train.py", line 431, in main
+    train_loss = train_epoch(model, train_loader, optimizer, criterion, device, is_streaming=True)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lewis/disschess/halfkp/train.py", line 317, in train_epoch
+    total_loss += loss.item()
+                  ^^^^^^^^^^^
+KeyboardInterrupt

@@ -1,0 +1,59 @@
+_wandb:
+    value:
+        cli_version: 0.22.2
+        e:
+            qb0m6bvcn1o2ivn1i26i2ii1iqprvszv:
+                apple:
+                    ecpuCores: 4
+                    gpuCores: 10
+                    memoryGb: 16
+                    name: Apple M3
+                    pcpuCores: 4
+                    ramTotalBytes: "17179869184"
+                    swapTotalBytes: "5368709120"
+                codePath: train.py
+                codePathLocal: train.py
+                cpu_count: 8
+                cpu_count_logical: 8
+                disk:
+                    /:
+                        total: "994662584320"
+                        used: "539843821568"
+                email: looey2005@gmail.com
+                executable: /opt/homebrew/opt/python@3.11/bin/python3.11
+                host: Lewiss-MacBook-Pro.local
+                memory:
+                    total: "17179869184"
+                os: macOS-15.5-arm64-arm-64bit
+                program: /Users/lewis/disschess/halfkp/train.py
+                python: CPython 3.11.12
+                root: /Users/lewis/disschess/halfkp
+                startedAt: "2025-10-15T13:20:28.109423Z"
+                writerId: qb0m6bvcn1o2ivn1i26i2ii1iqprvszv
+        m: []
+        python_version: 3.11.12
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+            "3":
+                - 16
+            "4": 3.11.12
+            "5": 0.22.2
+            "12": 0.22.2
+            "13": darwin-arm64
+batch_size:
+    value: 256
+device:
+    value: mps
+learning_rate:
+    value: 0.0001
+num_csv_files:
+    value: 1
+num_epochs:
+    value: 3
+streaming:
+    value: true
+val_samples:
+    value: 50000
