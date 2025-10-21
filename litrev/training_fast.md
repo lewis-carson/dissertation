@@ -50,17 +50,17 @@ targeted hard-example mining
 > 
 > Reasoning from first principles:
 > 
-> 1. **Goal**: maximize expected parameter improvement per unit of data.
+-> 1. Goal: maximize expected parameter improvement per unit of data.
 >    [
 >    \text{InfoGain}(s) = \mathbb{E}*{\theta'}[L(f*{\theta'}(s)) - L(f_\theta(s))]
 >    ]
 >    High values identify states that would shift beliefs the most.
 > 
-> 2. **Naive modification**: if you change those states directly, you push the data distribution toward very low-probability or adversarial regions. Gradients then point where the model is unreliable rather than where the environment is informative. That increases gradient variance and can destabilize training.
+-> 2. Naive modification: if you change those states directly, you push the data distribution toward very low-probability or adversarial regions. Gradients then point where the model is unreliable rather than where the environment is informative. That increases gradient variance and can destabilize training.
 > 
-> 3. **Better approach**: *sample or replay* such states with higher frequency, not alter them arbitrarily. That preserves support overlap with the true data manifold.
+-> 3. Better approach: *sample or replay* such states with higher frequency, not alter them arbitrarily. That preserves support overlap with the true data manifold.
 > 
-> 4. **When modification helps**: if the change is constrained by a plausibility prior (generator, legality heuristic, or density model). Then you can nudge samples along the manifold into nearby higher-information areas without going out-of-distribution.
+-> 4. When modification helps: if the change is constrained by a plausibility prior (generator, legality heuristic, or density model). Then you can nudge samples along the manifold into nearby higher-information areas without going out-of-distribution.
 > 
 > So yes, the idea of targeting high-information states is sound. The failure mode is doing it *without* a manifold constraint. You want
 > [

@@ -1,6 +1,6 @@
 https://leela-interp.github.io
 
-Here are **15 arXiv / open-access papers** (with PDF / HTML links) that I believe are quite relevant and illuminating for a dissertation on chess programming (especially with modern ML/neural / hybrid methods). Use these as “essential reading” for your literature survey and method groundwork:
+Here are 15 arXiv / open-access papers (with PDF / HTML links) that I believe are quite relevant and illuminating for a dissertation on chess programming (especially with modern ML/neural / hybrid methods). Use these as “essential reading” for your literature survey and method groundwork:
 
 ---
 
@@ -64,7 +64,7 @@ Here are **15 arXiv / open-access papers** (with PDF / HTML links) that I believ
 
 ---
 
-If you like, I can send you a **curated subset (5–7)** of *must-read* ones (ranked) tailored to your specific proposed project focus, so you don’t get overwhelmed. Do you want me to pick those for *your* project direction?
+If you like, I can send you a curated subset (5–7) of *must-read* ones (ranked) tailored to your specific proposed project focus, so you don’t get overwhelmed. Do you want me to pick those for *your* project direction?
 
 [1]: https://arxiv.org/abs/1712.01815?utm_source=chatgpt.com "Mastering Chess and Shogi by Self-Play with a General ..."
 [2]: https://arxiv.org/abs/2209.01506?utm_source=chatgpt.com "Neural Networks for Chess"
@@ -82,37 +82,37 @@ If you like, I can send you a **curated subset (5–7)** of *must-read* ones (ra
 [14]: https://arxiv.org/html/2501.17186v2?utm_source=chatgpt.com "Complete Chess Games Enable LLM Become A Chess Master - arXiv"
 [15]: https://arxiv.org/html/2409.11506v2?utm_source=chatgpt.com "Chess Rating Estimation from Moves and Clock Times Using a CNN ..."
 
-Here are 10+ arXiv (or freely accessible preprint) papers that are especially relevant to **neural-network chess engines** and **interpretability / mechanistic understanding**. These are good candidates to read, compare, and cite in your dissertation. I order them in rough priority, and group by theme.
+Here are 10+ arXiv (or freely accessible preprint) papers that are especially relevant to neural-network chess engines and interpretability / mechanistic understanding. These are good candidates to read, compare, and cite in your dissertation. I order them in rough priority, and group by theme.
 
 ---
 
 ## Core papers on neural chess / chess with transformers / learned look-ahead
 
-1. **Evidence of Learned Look-Ahead in a Chess-Playing Neural Network**
+1. Evidence of Learned Look-Ahead in a Chess-Playing Neural Network
    Jenner, Kapur, Georgiev, Allen, Emmons, Russell (2024) — shows causal / probing evidence that Leela’s policy network internally represents future moves and uses them. ([arXiv][1])
    [PDF/HTML] [https://arxiv.org/abs/2406.00877](https://arxiv.org/abs/2406.00877)
 
-2. **Iterative Inference in a Chess-Playing Neural Network**
+2. Iterative Inference in a Chess-Playing Neural Network
    Sandmann et al. (2025) — analyzes how the policy network refines its outputs through layers, non-monotonic trajectories of logits, etc. ([arXiv][2])
    [PDF/HTML] [https://arXiv.org/abs/2508.21380](https://arXiv.org/abs/2508.21380)
 
-3. **Mastering Chess with a Transformer Model**
+3. Mastering Chess with a Transformer Model
    (Monroe & Chalmers, 2024) — introduces “Chessformer,” a transformer-based architecture for chess, comparing architectures, position embeddings, and examining attention maps. ([arXiv][3])
    [PDF/HTML] [https://arXiv.org/abs/2409.12272](https://arXiv.org/abs/2409.12272)
 
-4. **Grandmaster-Level Chess Without Search**
+4. Grandmaster-Level Chess Without Search
    (2024) — trains a large transformer model purely by supervised learning (no explicit search) and achieves very high Elo and puzzle performance. Useful as a contrast to search-based or hybrid models. ([arXiv][4])
    [PDF/HTML] [https://arXiv.org/abs/2402.04494](https://arXiv.org/abs/2402.04494)
 
-5. **Contrastive Sparse Autoencoders for Interpreting Planning in Neural Chess Agents**
+5. Contrastive Sparse Autoencoders for Interpreting Planning in Neural Chess Agents
    (2024) — explores interpretability of latent spaces tied to planning, building automated feature taxonomies, etc. ([arXiv][5])
    [PDF/HTML] [https://arXiv.org/abs/2406.04028](https://arXiv.org/abs/2406.04028)
 
-6. **Neural Networks for Chess**
+6. Neural Networks for Chess
    (Klein, 2022) — not purely interpretability, but a well-rounded survey / introduction to neural nets in chess (AlphaZero, Leela, NNUE, etc). Good as a foundational reference. ([arXiv][6])
    [PDF/HTML] [https://arXiv.org/abs/2209.01506](https://arXiv.org/abs/2209.01506)
 
-7. **DeepChess: End-to-End Deep Neural Network for Automatic Learning in Chess**
+7. DeepChess: End-to-End Deep Neural Network for Automatic Learning in Chess
    (David, Netanyahu, Wolf, 2017) — an earlier attempt at end-to-end evaluation (comparing positions) without domain-specific features. Helps you see the evolution of ideas. ([arXiv][7])
    [PDF/HTML] [https://arXiv.org/abs/1711.09667](https://arXiv.org/abs/1711.09667)
 
@@ -120,25 +120,25 @@ Here are 10+ arXiv (or freely accessible preprint) papers that are especially re
 
 ## Supplemental / adjacent topics
 
-8. **Superior Computer Chess with Model Predictive Control, Reinforcement Learning, and Rollout**
+8. Superior Computer Chess with Model Predictive Control, Reinforcement Learning, and Rollout
    Gundawar, Li, Bertsekas (2024) — integrates MPC / rollout / RL ideas, viewing engines as components in a larger architecture. ([Massachusetts Institute of Technology][8])
    [PDF] [https://web.mit.edu/dimitrib/www/MPC-MC_ArXiv2409.06477v1.pdf](https://web.mit.edu/dimitrib/www/MPC-MC_ArXiv2409.06477v1.pdf)
 
-9. **Learning to play the Chess Variant Crazyhouse …**
+9. Learning to play the Chess Variant Crazyhouse …
    (Czech, Willig, et al., 2019) — trains a neural network for the variant “crazyhouse” using supervised and MCTS techniques, interesting as a different domain with more branching factor. ([Astrophysics Data System][9])
    [PDF/HTML] [https://arXiv.org/abs/1908.06660](https://arXiv.org/abs/1908.06660)
 
-10. **Predicting User Perception of Move Brilliance in Chess**
+10. Predicting User Perception of Move Brilliance in Chess
     (Zaidi et al., 2024) — uses neural nets + engine outputs to classify “brilliant” moves, combining predictive modeling with features of move trees. While not about engine internals, it’s a creative use of interpretability / explainability. ([arXiv][10])
     [PDF/HTML] [https://arXiv.org/abs/2406.11895](https://arXiv.org/abs/2406.11895)
 
-11. **Maia-2: A Unified Model for Human-AI Alignment in Chess**
+11. Maia-2: A Unified Model for Human-AI Alignment in Chess
     (Tang, Jiao, McIlroy-Young, Kleinberg, Sen, Anderson, 2024) — focuses more on human move prediction and alignment across skill levels, but includes network architectures and interpretability of skills embedding. ([arXiv][11])
     [PDF/HTML] [https://arXiv.org/abs/2409.20553](https://arXiv.org/abs/2409.20553)
 
 ---
 
-If you like, I can also gather the **PDFs directly** (downloadable links) and assemble a BibTeX file for you. Do you want me to fetch that?
+If you like, I can also gather the PDFs directly (downloadable links) and assemble a BibTeX file for you. Do you want me to fetch that?
 
 [1]: https://arxiv.org/abs/2406.00877?utm_source=chatgpt.com "Evidence of Learned Look-Ahead in a Chess-Playing Neural Network"
 [2]: https://arxiv.org/abs/2508.21380?utm_source=chatgpt.com "Iterative Inference in a Chess-Playing Neural Network"

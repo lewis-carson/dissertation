@@ -15,7 +15,7 @@
 \contentsline {subsubsection}{\numberline {2.2.1}Prioritized Replay and Non-IID Sampling}{5}{subsubsection.2.2.1}%
 \contentsline {subsubsection}{\numberline {2.2.2}Sample Weighting Functions}{6}{subsubsection.2.2.2}%
 \contentsline {subsubsection}{\numberline {2.2.3}Information-Theoretic Training Objectives}{6}{subsubsection.2.2.3}%
-\contentsline {subsubsection}{\numberline {2.2.4}Curriculum Learning and Synthetic Data}{6}{subsubsection.2.2.4}%
+\contentsline {subsubsection}{\numberline {2.2.4}Curriculum Learning}{6}{subsubsection.2.2.4}%
 \contentsline {subsection}{\numberline {2.3}Assessment and Relation to Project}{6}{subsection.2.3}%
 \contentsline {section}{\numberline {3}Critical Comparison with ChatGPT}{7}{section.3}%
 \contentsline {subsection}{\numberline {3.1}Prompts Used}{7}{subsection.3.1}%

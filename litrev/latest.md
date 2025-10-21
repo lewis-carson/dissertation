@@ -3,6 +3,9 @@
 Talk about "game playing" models where data is plentiful and self-play is possible. Samples are taken from a logically bounded space (legal moves).
 
 How to find "non linearities" in the weights manifold which are "high information" and "plausible".
+* Used in natural gradient methods: update direction (F^{-1}\nabla_\theta J(\theta)) respects the model’s information geometry (Amari, 1998; Kakade, 2001).
+* Used in EWC (Elastic Weight Consolidation) to measure which weights are crucial to previous tasks (Kirkpatrick et al., arXiv:1612.00796).
+* Used as a state importance measure: high Fisher per-state -> high expected gradient magnitude -> high expected learning progress.
 
 How to define "high information" - expected learning progress?
 
@@ -55,6 +58,10 @@ Work out ways to mix "constrained learning" with raw data which is drawn iid. In
 >   (\hat{\mathcal{I}} = \frac{1}{N}\sum_i g_i g_i^\top), with (g_i=\nabla_\theta \log p(x_i|\theta)).
 > * **Diagonal Fisher**: keep only diag elements for efficiency.
 > * **Trace Fisher**: sum of diagonal, scalar curvature estimate.
+* Empirical Fisher: average over batch samples
+	(\hat{\mathcal{I}} = \frac{1}{N}\sum_i g_i g_i^\top), with (g_i=\nabla_\theta \log p(x_i|\theta)).
+* Diagonal Fisher: keep only diag elements for efficiency.
+* Trace Fisher: sum of diagonal, scalar curvature estimate.
 > 
 > These can be computed cheaply from backprop gradients and used as part of your “information score.”
 > 
@@ -65,6 +72,7 @@ Also respects the sample distribution's information geometry.
 
 > 
 > You want to balance **bias** (staying on the true data manifold) and **variance reduction** (targeting high-information regions).
+> You want to balance bias (staying on the true data manifold) and variance reduction (targeting high-information regions).
 > Let (p_\text{real}(s)) be the empirical training distribution and (p_\text{aug}(s)) your synthetic/high-information generator. You train under a mixture
 > [
 > p_\text{mix}(s) = (1-\rho)p_\text{real}(s) + \rho p_\text{aug}(s)
@@ -78,12 +86,16 @@ Also respects the sample distribution's information geometry.
 > * **Start low**: ( \rho \in [0.1, 0.3] ). Ensures gradient direction is anchored to real data.
 > * **Anneal** ( \rho \downarrow 0 ) over time as model stabilizes. Synthetic data are most useful early, when gradients are under-explored.
 > * **Adaptive schedule**: raise ( \rho ) when validation loss plateaus (signalling low information in real samples), lower it if KL between real and augmented activations grows too large.
+ * Start low: ( \rho \in [0.1, 0.3] ). Ensures gradient direction is anchored to real data.
+ * Anneal ( \rho \downarrow 0 ) over time as model stabilizes. Synthetic data are most useful early, when gradients are under-explored.
+ * Adaptive schedule: raise ( \rho ) when validation loss plateaus (signalling low information in real samples), lower it if KL between real and augmented activations grows too large.
 > 
 > ---
 > 
 > ### 2. Weighting within augmented data
 > 
 > Within (p_\text{aug}), prioritize by an **information score** (I(s)):
+Within (p_\text{aug}), prioritize by an information score (I(s)):
 > [
 > w(s) = \frac{I(s)^\alpha}{\sum_{s'} I(s')^\alpha}
 > ]

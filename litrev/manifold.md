@@ -54,7 +54,7 @@ Improving training efficiency of position evaluation networks through manifold-a
 > - Sample-efficiency: validation loss and Elo as a function of training steps.
 > - Distribution overlap: KL(p_generated || p_real) in latent or feature space.
 > - Diagnostics: fraction illegal/implausible, gradient norms over time, per-layer sensitivity, ensemble calibration.
-> - Ablations: replay-only vs synthetic-only, λ sweep, buffer size, replay probability schedule.
+> - Ablations: replay-only vs generated-only, λ sweep, buffer size, replay probability schedule.
 > 
 > ## Risks and mitigations
 > - Risk: generator produces adversarial or unrealistic positions.
@@ -149,7 +149,7 @@ Improving training efficiency of position evaluation networks through manifold-a
 > - Sample-efficiency: validation loss and Elo as a function of training steps.
 > - Distribution overlap: KL(p_generated || p_real) in latent or feature space.
 > - Diagnostics: fraction illegal/implausible, gradient norms over time, per-layer sensitivity, ensemble calibration.
-> - Ablations: replay-only vs synthetic-only, λ sweep, buffer size, replay probability schedule.
+> - Ablations: replay-only vs generated-only, λ sweep, buffer size, replay probability schedule.
 > 
 > ## Risks and mitigations
 > - Risk: generator produces adversarial or unrealistic positions.
@@ -217,7 +217,7 @@ If you add an inner product on each tangent space varying smoothly you get a Rie
 ## Why people talk about a “chess position manifold”
 - The full space of chess states is combinatorial and huge (legal positions vs. all possible bitboard patterns), but plausible human/computer-play positions are far fewer and structured.
 - Intuitively, plausible positions occupy a much smaller region in the full encoding space — they have rules, piece patterns, pawn structures, typical development phases, etc. That concentration behaves like a manifold (or at least a low‑dimensional structure) which you can try to learn.
-- Modeling that structure helps: realistic sampling, generating synthetic but plausible positions, and designing sampling strategies that prioritize informative regions.
+- Modeling that structure helps: realistic sampling, generating plausible positions, and designing sampling strategies that prioritize informative regions.
 
 ## Practical implications for your project
 - If positions lie (approximately) on a manifold, a generative model (VAE/flow) can estimate density or learn latent coordinates. Those can be used for:
