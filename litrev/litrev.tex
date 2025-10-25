@@ -35,11 +35,13 @@
 
 \textbf{Student Name:} Lewis \\
 \textbf{Supervisor Name:} Maximilien Gadouleau \\
-\textbf{Project Title:} Manifold-Aware Sampling for Efficient Chess Evaluation Network Training
+\textbf{Project Title:} Manifold-Aware Sampling for Efficient Chess Evaluation Network Training*
 
 \subsection{Project Description}
 
-This project will investigate prioritized replay and non-IID sampling techniques to improve the sample efficiency of chess evaluation network training. Traditional approaches sample training positions uniformly from game databases, but this fails to account for the fact that not all positions provide equal learning value. Using Google DeepMind's ChessBench dataset (10 million chess games with 15 billion Stockfish-annotated positions), I will implement adaptive buffers that replay high-weighted positions more frequently, creating non-stationary training distributions that focus on challenging examples and break from traditional SGD assumptions \cite{schaul2016per}.
+* training ground etc
+
+This project will investigate prioritized replay and non-IID sampling techniques to improve the sample efficiency of chess evaluation network training. Traditional approaches sample training positions uniformly from game databases, but this fails to account for the fact that not all positions provide equal learning value. Using the test80-2024 dataset (282 GB of annotated chess positions covering games from January to September 2024), I will implement adaptive buffers that replay high-weighted positions more frequently, creating non-stationary training distributions that focus on challenging examples and break from traditional SGD assumptions \cite{schaul2016per}.
 
 A key innovation will be the development of \textbf{prioritized replay buffers} and \textbf{non-iid sampling strategies} that dynamically prioritize positions based on their information content. Instead of treating all training examples equally, the system will adaptively sample high-value examples more frequently, allowing the training process to focus on currently challenging positions while maintaining a balance with exploration.
 
@@ -70,7 +72,7 @@ Before commencing the main implementation, I need to:
 
 \subsubsection{Basic Deliverables}
 \begin{itemize}
-    \item Chess position dataset and preprocessing pipeline using Google DeepMind's ChessBench dataset (10 million games, 15 billion annotated positions)
+    \item Chess position dataset and preprocessing pipeline using the test80-2024 dataset (282 GB of annotated positions, covering games from January to September 2024)
     \item Basic HalfKP implementation for baseline testing
     \item Chess engine integration for playing strength evaluation and position generation
     \item Working evaluation network training loop with standard uniform sampling
@@ -98,7 +100,7 @@ Before commencing the main implementation, I need to:
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[x=0.40cm, y=0.7cm, every node/.style={font=\small}]
+\begin{tikzpicture}[x=0.3cm, y=0.7cm, every node/.style={font=\small}]
     \draw[->] (0,0) -- (24,0) node[right] {Weeks};
 
     \foreach \x/\lbl in {0/0,4/4,8/8,12/12,16/16,20/20,24/24} {
@@ -106,47 +108,28 @@ Before commencing the main implementation, I need to:
         \node[below=2pt] at (\x,-0.1) {\lbl};
     }
 
-    \node[left] at (-0.5,5.2) {Final Report};
-    \draw[fill=orange!30,draw=black] (10,5) rectangle (24,5.4);
+    \node[left] at (-0.5,5.2) {Literature Review};
+    \draw[fill=blue!30,draw=black] (0,5) rectangle (4,5.4);
 
-    \node[left] at (-0.5,4) {Base Reference Implementation};
-    \draw[fill=purple!30,draw=black] (6,3.8) rectangle (10,4.2);
+    \node[left] at (-0.5,4) {Data Preparation};
+    \draw[fill=green!30,draw=black] (2,3.8) rectangle (6,4.2);
 
-    \node[left] at (-0.5,3) {Sampling Methods};
-    \draw[fill=red!30,draw=black] (10,2.8) rectangle (16,3.2);
+    \node[left] at (-0.5,3) {Replay Buffer Implementation};
+    \draw[fill=yellow!30,draw=black] (7,2.8) rectangle (13,3.2);
 
-    \node[left] at (-0.5,2) {Replay Buffer Implementation};
-    \draw[fill=yellow!30,draw=black] (6,1.8) rectangle (12,2.2);
+    \node[left] at (-0.5,2) {Sampling Methods};
+    \draw[fill=red!30,draw=black] (10,1.8) rectangle (18,2.2);
 
-    \node[left] at (-0.5,1) {Data Preparation};
-    \draw[fill=green!30,draw=black] (2,0.8) rectangle (6,1.2);
+    \node[left] at (-0.5,1) {Base Reference Implementation};
+    \draw[fill=purple!30,draw=black] (5,0.8) rectangle (10,1.2);
 
-    \node[left] at (-0.5,0) {Literature Review};
-    \draw[fill=blue!30,draw=black] (0,-0.2) rectangle (4,0.2);
-
-    \begin{scope}[shift={(25,5.2)}]
-        \node[anchor=west,font=\small] at (0,0.6) {Legend:};
-        \draw[fill=blue!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Literature};
-        \begin{scope}[yshift=-0.4cm]
-            \draw[fill=green!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Data};
-        \end{scope}
-        \begin{scope}[yshift=-0.8cm]
-            \draw[fill=yellow!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Replay Buffer};
-        \end{scope}
-        \begin{scope}[yshift=-1.2cm]
-            \draw[fill=red!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Sampling};
-        \end{scope}
-        \begin{scope}[yshift=-1.6cm]
-            \draw[fill=purple!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Training};
-        \end{scope}
-        \begin{scope}[yshift=-2.0cm]
-            \draw[fill=orange!30,draw=black] (0,0) rectangle (0.4,0.25) node[right=0.6em,black,anchor=west] {Report};
-        \end{scope}
-    \end{scope}
+    \node[left] at (-0.5,0) {Final Report};
+    \draw[fill=orange!30,draw=black] (8,-0.2) rectangle (24,0.2);
 \end{tikzpicture}
 \caption{Project Timeline Gantt Chart}
 \label{fig:gantt}
 \end{figure}
+
 
 \subsection{References}
 \bibliographystyle{plainnat}
@@ -175,23 +158,39 @@ Key terms include:
 
 \subsubsection{Prioritized Replay and Non-IID Sampling}
 
-A key innovation in sample-efficient training is \textbf{prioritized replay}, where high-information positions are sampled more frequently than low-information ones, creating non-stationary training distributions. This breaks from the iid assumptions of traditional stochastic gradient descent and allows the training process to adaptively focus on currently challenging examples. Techniques include experience replay buffers with priority weighting and curriculum-based sampling that evolves the training distribution over time.
+A key innovation in sample-efficient training is \textbf{prioritized replay}, where high-information positions are sampled more frequently than low-information ones, creating non-stationary training distributions. This breaks from the iid assumptions of traditional stochastic gradient descent and allows the training process to adaptively focus on currently challenging examples. Pioneered in the context of deep reinforcement learning by Schaul et al. \cite{schaul2016per}, prioritized experience replay has proven highly effective in improving sample efficiency across numerous domains. Techniques include experience replay buffers with priority weighting and curriculum-based sampling that evolves the training distribution over time.
 
-The core mechanism involves maintaining a replay buffer where positions are stored with associated weights. During training, positions are sampled proportionally to their weights, ensuring that high-value examples are revisited more often. This creates non-iid sampling patterns that adapt to the model's learning progress, prioritizing positions that currently provide the most learning signal.
+The core mechanism involves maintaining a replay buffer where positions are stored with associated weights. During training, positions are sampled proportionally to their weights, ensuring that high-value examples are revisited more often. This creates non-iid sampling patterns that adapt to the model's learning progress, prioritizing positions that currently provide the most learning signal. The mathematical foundation for non-IID sampling traces back to importance sampling theory \cite{rubinstein2007,owen2013}, which provides principled methods for reweighting samples to correct for distribution mismatch and reduce variance in gradient estimates.
 
-Key challenges include designing appropriate weighting functions, managing buffer size and update frequency, and preventing overfitting to high-weighted examples. Advanced implementations incorporate dynamic weighting that adjusts based on training progress and ensemble disagreement measures.
+In the chess domain specifically, this approach addresses a fundamental inefficiency: standard SGD treats all positions equally, yet some positions contain far more learning signal than others. Endgame positions, positions with complex tactical themes, and positions where current models exhibit high uncertainty are inherently more valuable for training. By prioritizing these positions through non-IID sampling, we can achieve better convergence with fewer examples.
+
+Key challenges include designing appropriate weighting functions, managing buffer size and update frequency, and preventing overfitting to high-weighted examples. Advanced implementations incorporate dynamic weighting that adjusts based on training progress and ensemble disagreement measures \cite{freeman2017,karpukhin2020}. The stability-plasticity tradeoff \cite{kirkpatrick2017} also becomes critical when using non-stationary distributions, requiring careful hyperparameter tuning to balance exploration and exploitation in the sampling process.
 
 \subsubsection{Sample Weighting Functions}
 
-A critical aspect of prioritized replay is the design of weighting functions that estimate the importance of training examples. \emph{Naive difficulty scoring} provides a starting point with simple heuristics like material imbalance or position complexity. More sophisticated approaches use information-theoretic measures such as gradient norms, ensemble disagreement, and predictive uncertainty. The key challenge is developing weighting functions that correlate well with actual learning value while being computationally tractable for frequent replay buffer updates.
+A critical aspect of prioritized replay is the design of weighting functions that estimate the importance of training examples. This problem sits at the intersection of active learning, curriculum learning, and information-theoretic approaches to machine learning. \emph{Naive difficulty scoring} provides a starting point with simple heuristics like material imbalance, piece activity, or position complexity metrics \cite{shannon1950}. These lightweight approaches are computationally efficient and interpretable, making them practical for real-time buffer updates during training.
+
+More sophisticated approaches use information-theoretic measures such as gradient norms, ensemble disagreement, and predictive uncertainty. Gradient-based weighting \cite{koh2017influence} assigns higher weights to examples whose gradients have larger norms, reflecting their potential impact on network parameters. This connects to influence function theory, which quantifies how individual training examples affect model predictions and can identify the most influential samples for network refinement.
+
+Ensemble-based weighting leverages disagreement between multiple models or model snapshots to identify positions where the model is uncertain \cite{lakshminarayanan2017,gal2016}. Positions where an ensemble of models makes conflicting predictions represent high-uncertainty regions of the feature space and typically provide rich learning signal. Uncertainty-based sampling has strong theoretical justification in both Bayesian deep learning \cite{gal2016} and information theory \cite{cover1991}, as reducing uncertainty in high-entropy regions is fundamentally about maximizing information gain.
+
+The key challenge is developing weighting functions that correlate well with actual learning value while being computationally tractable for frequent replay buffer updates. Different weighting schemes may be optimal at different training stages---early training may benefit from harder examples, while later training may require diversity \cite{azadi2016,iscen2022}. Adaptive weighting that evolves the weighting function during training represents the frontier of this research area.
 
 \subsubsection{Information-Theoretic Training Objectives}
 
-Research has explored various measures to quantify the informativeness of training positions within replay frameworks. Gradient-based scores measure how much a position affects network parameters, while ensemble disagreement identifies positions where different models make conflicting predictions. These scores help prioritize replay on positions that maximize learning progress and adapt the non-iid sampling distribution.
+Research has explored various measures to quantify the informativeness of training positions within replay frameworks. The foundational concept is mutual information: positions that maximize mutual information between model predictions and true labels are inherently more valuable for reducing predictive uncertainty \cite{shannon1948}. Gradient-based scores measure how much a position affects network parameters, providing a direct measure of learning impact \cite{koh2017influence,pruthi2020}. Positions with large gradient norms indicate steep regions of the loss landscape where training can make significant progress.
+
+Ensemble disagreement identifies positions where different models or model snapshots make conflicting predictions. This metric is grounded in decision theory and uncertainty quantification: high disagreement indicates high epistemic uncertainty, which reduces through exposure to informative examples \cite{lakshminarayanan2017,malinin2021}. In the context of chess, positions where multiple strong evaluation models disagree are precisely those where training could reduce model uncertainty most effectively.
+
+Other information-theoretic measures include entropy of model predictions \cite{smith2018}, prediction margin (distance to decision boundary) \cite{wang2014}, and loss variance across ensemble members \cite{smith2018active}. Recent work in meta-learning and data valuation \cite{ghorbani2020,kwon2023} has developed principled methods for assigning values to training examples based on their contribution to model generalization. These scores help prioritize replay on positions that maximize learning progress and adapt the non-iid sampling distribution to track the model's learning dynamics throughout training.
 
 \subsubsection{Curriculum Learning}
 
-Curriculum learning suggests training on progressively more complex positions. Within prioritized replay, curriculum strategies help evolve the sampling distribution over time, starting with uniform sampling and gradually shifting to more focused non-iid patterns.
+Curriculum learning proposes training on progressively more complex examples, analogous to how humans learn from simple concepts before tackling difficult material \cite{bengio2009}. The theoretical foundation rests on the intuition that learning on easy examples first provides a good initialization for harder examples, and that the curriculum itself acts as an implicit regularizer \cite{hacohen2019}. Within prioritized replay, curriculum strategies help evolve the sampling distribution over time, starting with uniform sampling and gradually shifting to more focused non-iid patterns that prioritize harder examples.
+
+Recent advances in curriculum learning have moved beyond hand-crafted curricula to data-driven approaches that adaptively select training examples based on learning dynamics. Self-paced learning \cite{kumar2010} allows the model to set its own curriculum, gradually incorporating harder examples as training progresses. Related concepts like hard example mining \cite{wang2014} and active learning \cite{settles2009} also leverage the principle that focusing computational resources on informative examples improves efficiency.
+
+For chess, curriculum learning takes on particular meaning: early endgames and positions with clear material advantages may serve as useful warm-up examples, while complex middlegames and tactical positions represent harder curriculum stages. The interplay between curriculum strategy and weighting function design remains an open research question---a good curriculum may reduce the need for sophisticated weighting functions, or conversely, sophisticated weighting may enable learning from curriculum-free, uniformly shuffled data \cite{alur2023,carlsson2023}. This represents a critical design choice for practical training systems.
 
 \subsection{Assessment and Relation to Project}
 

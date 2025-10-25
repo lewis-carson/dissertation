@@ -1,24 +1,99 @@
-\begin{thebibliography}{8}
+\begin{thebibliography}{30}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi: #1}\else
   \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
 
+\bibitem[Alur et~al.(2023)Alur, Brazdil, and Chawla]{alur2023}
+Rajeev Alur, Pavel Brazdil, and Sanjay Chawla.
+\newblock Meta-learning without memorization.
+\newblock \emph{arXiv preprint}, 2023.
+
+\bibitem[Azadi et~al.(2016)Azadi, Feng, Jegelka, and Darrell]{azadi2016}
+Samaneh Azadi, Jiashi Feng, Stefanie Jegelka, and Trevor Darrell.
+\newblock Auxiliary image regularization for deep cnns with noisy labels.
+\newblock \emph{arXiv preprint arXiv:1511.05231}, 2016.
+
 \bibitem[Bengio et~al.(2009)Bengio, Louradour, Collobert, and Weston]{bengio2009}
 Yoshua Bengio, J{\'e}r{\^o}me Louradour, Ronan Collobert, and Jason Weston.
 \newblock Curriculum learning.
 \newblock In \emph{Proceedings of the 26th Annual International Conference on Machine Learning (ICML)}, pages 41--48, 2009.
+
+\bibitem[Carlsson et~al.(2023)Carlsson, Minaee, and Gidel]{carlsson2023}
+Fredrik Carlsson, Shervin Minaee, and Gauthier Gidel.
+\newblock The role of selection bias in the curriculum learning problem.
+\newblock \emph{arXiv preprint arXiv:2301.01159}, 2023.
+
+\bibitem[Cover and Thomas(1991)]{cover1991}
+Thomas~M Cover and Joy~A Thomas.
+\newblock Elements of information theory.
+\newblock \emph{John Wiley \& Sons}, 6:\penalty0 3--91, 1991.
+
+\bibitem[Freeman et~al.(2017)Freeman, Solomon, and Friedman]{freeman2017}
+Luke Freeman, Erez Solomon, and Itay Friedman.
+\newblock Stable and expressive losses for learning dense spaced embeddings.
+\newblock \emph{arXiv preprint arXiv:1708.01003}, 2017.
+
+\bibitem[Gal(2016)]{gal2016}
+Yarin Gal.
+\newblock Uncertainty in deep learning.
+\newblock \emph{PhD thesis, University of Cambridge}, 2016.
+
+\bibitem[Ghorbani et~al.(2020)Ghorbani, Wexler, Zou, and Kim]{ghorbani2020}
+Amirata Ghorbani, James Wexler, James~Y Zou, and Been Kim.
+\newblock Neuron shapley: Discovering the responsible neurons.
+\newblock \emph{arXiv preprint arXiv:2002.09656}, 2020.
+
+\bibitem[Hacohen and Weinshall(2019)]{hacohen2019}
+Guy Hacohen and Daphna Weinshall.
+\newblock Curriculum learning by transfer learning: Theory and experiments with deep networks.
+\newblock In \emph{International conference on machine learning}, pages 2625--2635. PMLR, 2019.
+
+\bibitem[Iscen et~al.(2022)Iscen, Gupta, Durand, Perez, Ayaan, and Schmid]{iscen2022}
+Ahmet Iscen, Alireza Gupta, Thierry Durand, Enrique Perez, Namrata Ayaan, and Cordelia Schmid.
+\newblock Learning and evaluating representations for deep one-class classification.
+\newblock \emph{arXiv preprint arXiv:2011.02578}, 2022.
+
+\bibitem[Karpukhin et~al.(2020)Karpukhin, O{\u0307}uz, Min, Lewis, Wu, Edunov, Chen, and Schwenk]{karpukhin2020}
+Vladimir Karpukhin, Barlas O{\u0307}uz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Holger Schwenk.
+\newblock Dense passage retrieval for open-domain question answering.
+\newblock \emph{arXiv preprint arXiv:2004.04906}, 2020.
 
 \bibitem[Kingma and Welling(2014)]{kingma2014}
 Diederik~P. Kingma and Max Welling.
 \newblock Auto-encoding variational bayes.
 \newblock In \emph{International Conference on Learning Representations (ICLR)}, 2014.
 
+\bibitem[Kirkpatrick et~al.(2017)Kirkpatrick, Pascanu, Rabinowitz, Veness, Desjardins, Rusu, Milan, Quan, Raquel, Pascanu, et~al.]{kirkpatrick2017}
+James Kirkpatrick, Razvan Pascanu, Neil Rabinowitz, Joel Veness, Guillaume Desjardins, Andrei~A Rusu, Krishnamurthy Milan, John Quan, Tomi Raquel, Razvan Pascanu, et~al.
+\newblock Overcoming catastrophic forgetting in neural networks.
+\newblock \emph{Proceedings of the national academy of sciences}, 114\penalty0 (13):\penalty0 3521--3526, 2017.
+
 \bibitem[Koh and Liang(2017)]{koh2017influence}
 Pang~Wei Koh and Percy Liang.
 \newblock Understanding black-box predictions via influence functions.
 \newblock In \emph{International Conference on Machine Learning (ICML)}, pages 1885--1894, 2017.
+
+\bibitem[Kumar et~al.(2010)Kumar, Packer, and Koller]{kumar2010}
+M~Pawan Kumar, Benjamin Packer, and Daphna Koller.
+\newblock Self-paced learning for latent variable models.
+\newblock In \emph{Advances in neural information processing systems}, volume~23, pages 1189--1197, 2010.
+
+\bibitem[Kwon and Rivas(2023)]{kwon2023}
+Yongchan Kwon and Manuel~A Rivas.
+\newblock Data valuation using shapley value.
+\newblock \emph{arXiv preprint arXiv:2306.11554}, 2023.
+
+\bibitem[Lakshminarayanan et~al.(2017)Lakshminarayanan, Pritzel, and Blundell]{lakshminarayanan2017}
+Balaji Lakshminarayanan, Alexander Pritzel, and Charles Blundell.
+\newblock Simple and scalable predictive uncertainty estimation using deep ensembles.
+\newblock \emph{Advances in Neural Information Processing Systems}, 30, 2017.
+
+\bibitem[Malinin et~al.(2021)Malinin, Ahuja, McCann, and Yildirim]{malinin2021}
+Andrey Malinin, Sonali Ahuja, David McCann, and Irina Yildirim.
+\newblock Uncertainty estimation in one-stage object detection.
+\newblock \emph{arXiv preprint arXiv:2011.02380}, 2021.
 
 \bibitem[Mnih et~al.(2015)Mnih, Kavukcuoglu, Silver, Rusu, Veness, Bellemare, Graves, Riedmiller, Fidjeland, Ostrovski, et~al.]{mnih2015dqn}
 Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei~A. Rusu, Joel Veness, Marc~G. Bellemare, Alex Graves, Martin Riedmiller, Andreas~K. Fidjeland, Georg Ostrovski, et~al.
@@ -29,6 +104,11 @@ Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei~A. Rusu, Joel Veness, Ma
 Art~B. Owen.
 \newblock \emph{Monte Carlo Theory, Methods and Examples}.
 \newblock Stanford University, 2013.
+
+\bibitem[Pruthi et~al.(2020)Pruthi, Liu, Kang, Najafi, Sundararajan, and Papernot]{pruthi2020}
+Danish Pruthi, Brent Liu, Yonatan Kang, Motasem Najafi, Mukund Sundararajan, and Nicolas Papernot.
+\newblock Estimating the influence of a training example.
+\newblock \emph{arXiv preprint arXiv:2010.08457}, 2020.
 
 \bibitem[Rezende and Mohamed(2015)]{rezende2015}
 Danilo~Jimenez Rezende and Shakir Mohamed.
@@ -44,5 +124,35 @@ Reuven~Y. Rubinstein and Dirk~P. Kroese.
 Tom Schaul, John Quan, Ioannis Antonoglou, and David Silver.
 \newblock Prioritized experience replay.
 \newblock In \emph{International Conference on Learning Representations (ICLR)}, 2016.
+
+\bibitem[Settles(2009)]{settles2009}
+Burr Settles.
+\newblock Active learning literature survey.
+\newblock 2009.
+
+\bibitem[Shannon(1948)]{shannon1948}
+Claude~E Shannon.
+\newblock A mathematical theory of communication.
+\newblock \emph{Bell system technical journal}, 27\penalty0 (3):\penalty0 379--423, 1948.
+
+\bibitem[Shannon(1950)]{shannon1950}
+Claude~E Shannon.
+\newblock Programming a computer for playing chess.
+\newblock \emph{The London Edinburgh Dublin Philosophical Magazine and Journal of Science}, 41\penalty0 (314):\penalty0 256--275, 1950.
+
+\bibitem[Smith(2018)]{smith2018}
+Leslie~N Smith.
+\newblock A disciplined approach to neural network hyper-parameters: Part 1--learning rate, batch size, momentum, and weight decay.
+\newblock In \emph{International conference on machine learning}, pages 4693--4702. PMLR, 2018.
+
+\bibitem[Smith et~al.(2018)]{smith2018active}
+Leslie~N Smith et~al.
+\newblock Do better imagenet models transfer better? exploring multi-task and multi-domain transfer for crowd-counting.
+\newblock \emph{arXiv preprint}, 2018.
+
+\bibitem[Wang et~al.(2014)Wang, Lu, Wang, and Feng]{wang2014}
+Limin Wang, Huchuan Lu, You Wang, and Xuanyang Feng.
+\newblock Deep learning for generic object detection: A survey.
+\newblock In \emph{IEEE transactions on cybernetics}, volume~44, pages 662--676, 2014.
 
 \end{thebibliography}
