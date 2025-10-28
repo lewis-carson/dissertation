@@ -1,4 +1,4 @@
-\begin{thebibliography}{30}
+\begin{thebibliography}{29}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -9,11 +9,6 @@
 Rajeev Alur, Pavel Brazdil, and Sanjay Chawla.
 \newblock Meta-learning without memorization.
 \newblock \emph{arXiv preprint}, 2023.
-
-\bibitem[Azadi et~al.(2016)Azadi, Feng, Jegelka, and Darrell]{azadi2016}
-Samaneh Azadi, Jiashi Feng, Stefanie Jegelka, and Trevor Darrell.
-\newblock Auxiliary image regularization for deep cnns with noisy labels.
-\newblock \emph{arXiv preprint arXiv:1511.05231}, 2016.
 
 \bibitem[Bengio et~al.(2009)Bengio, Louradour, Collobert, and Weston]{bengio2009}
 Yoshua Bengio, J{\'e}r{\^o}me Louradour, Ronan Collobert, and Jason Weston.
@@ -30,11 +25,6 @@ Thomas~M Cover and Joy~A Thomas.
 \newblock Elements of information theory.
 \newblock \emph{John Wiley \& Sons}, 6:\penalty0 3--91, 1991.
 
-\bibitem[Freeman et~al.(2017)Freeman, Solomon, and Friedman]{freeman2017}
-Luke Freeman, Erez Solomon, and Itay Friedman.
-\newblock Stable and expressive losses for learning dense spaced embeddings.
-\newblock \emph{arXiv preprint arXiv:1708.01003}, 2017.
-
 \bibitem[Gal(2016)]{gal2016}
 Yarin Gal.
 \newblock Uncertainty in deep learning.
@@ -49,16 +39,6 @@ Amirata Ghorbani, James Wexler, James~Y Zou, and Been Kim.
 Guy Hacohen and Daphna Weinshall.
 \newblock Curriculum learning by transfer learning: Theory and experiments with deep networks.
 \newblock In \emph{International conference on machine learning}, pages 2625--2635. PMLR, 2019.
-
-\bibitem[Iscen et~al.(2022)Iscen, Gupta, Durand, Perez, Ayaan, and Schmid]{iscen2022}
-Ahmet Iscen, Alireza Gupta, Thierry Durand, Enrique Perez, Namrata Ayaan, and Cordelia Schmid.
-\newblock Learning and evaluating representations for deep one-class classification.
-\newblock \emph{arXiv preprint arXiv:2011.02578}, 2022.
-
-\bibitem[Karpukhin et~al.(2020)Karpukhin, O{\u0307}uz, Min, Lewis, Wu, Edunov, Chen, and Schwenk]{karpukhin2020}
-Vladimir Karpukhin, Barlas O{\u0307}uz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Holger Schwenk.
-\newblock Dense passage retrieval for open-domain question answering.
-\newblock \emph{arXiv preprint arXiv:2004.04906}, 2020.
 
 \bibitem[Kingma and Welling(2014)]{kingma2014}
 Diederik~P. Kingma and Max Welling.
@@ -145,14 +125,34 @@ Leslie~N Smith.
 \newblock A disciplined approach to neural network hyper-parameters: Part 1--learning rate, batch size, momentum, and weight decay.
 \newblock In \emph{International conference on machine learning}, pages 4693--4702. PMLR, 2018.
 
-\bibitem[Smith et~al.(2018)]{smith2018active}
-Leslie~N Smith et~al.
-\newblock Do better imagenet models transfer better? exploring multi-task and multi-domain transfer for crowd-counting.
-\newblock \emph{arXiv preprint}, 2018.
+\bibitem[Sobczyk et~al.(2024)]{sobczyk2024nnue}
+Tomasz Sobczyk et~al.
+\newblock Basic training procedure (easy\_train.py).
+\newblock \url{https://github.com/official-stockfish/nnue-pytorch/wiki/Basic-training-procedure-(easy_train.py)}, 2024.
+\newblock Accessed: 2024-10-26.
 
-\bibitem[Wang et~al.(2014)Wang, Lu, Wang, and Feng]{wang2014}
-Limin Wang, Huchuan Lu, You Wang, and Xuanyang Feng.
-\newblock Deep learning for generic object detection: A survey.
-\newblock In \emph{IEEE transactions on cybernetics}, volume~44, pages 662--676, 2014.
+\bibitem[{Stockfish Development Team}(2024{\natexlab{a}})]{stockfishorg2024sprt}
+{Stockfish Development Team}.
+\newblock Chess sprt calculator.
+\newblock \url{https://tests.stockfishchess.org/sprt_calc}, 2024{\natexlab{a}}.
+\newblock Sequential Probability Ratio Test parameters and expected game duration.
+
+\bibitem[{Stockfish Development Team}(2024{\natexlab{b}})]{stockfishorg2024stats}
+{Stockfish Development Team}.
+\newblock Statistical methods for chess engine evaluation.
+\newblock \url{https://tests.stockfishchess.org/tests/stats}, 2024{\natexlab{b}}.
+\newblock SPRT, pentanomial models, and Bayesian Elo rating analysis.
+
+\bibitem[{Stockfish Development Team}(2024{\natexlab{c}})]{stockfishorg2024testing}
+{Stockfish Development Team}.
+\newblock Stockfish testing infrastructure.
+\newblock \url{https://tests.stockfishchess.org/tests}, 2024{\natexlab{c}}.
+\newblock Distributed testing queue for Stockfish engine evaluation.
+
+\bibitem[{Stockfish Fishtest Team}(2024)]{fishtest2024math}
+{Stockfish Fishtest Team}.
+\newblock Fishtest mathematics.
+\newblock \url{https://github.com/official-stockfish/fishtest/wiki/Fishtest-mathematics}, 2024.
+\newblock Theoretical foundations of SPRT testing and Elo rating models.
 
 \end{thebibliography}

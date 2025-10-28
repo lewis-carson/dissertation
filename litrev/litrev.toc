@@ -6,7 +6,7 @@
 \contentsline {subsection}{\numberline {1.5}Deliverables}{3}{subsection.1.5}%
 \contentsline {subsubsection}{\numberline {1.5.1}Basic Deliverables}{3}{subsubsection.1.5.1}%
 \contentsline {subsubsection}{\numberline {1.5.2}Intermediate Deliverables}{3}{subsubsection.1.5.2}%
-\contentsline {subsubsection}{\numberline {1.5.3}Advanced Deliverables}{3}{subsubsection.1.5.3}%
+\contentsline {subsubsection}{\numberline {1.5.3}Advanced Deliverables}{4}{subsubsection.1.5.3}%
 \contentsline {subsection}{\numberline {1.6}Timeline}{4}{subsection.1.6}%
 \contentsline {subsection}{\numberline {1.7}References}{4}{subsection.1.7}%
 \contentsline {section}{\numberline {2}Literature Survey}{7}{section.2}%
@@ -16,8 +16,10 @@
 \contentsline {subsubsection}{\numberline {2.2.2}Sample Weighting Functions}{8}{subsubsection.2.2.2}%
 \contentsline {subsubsection}{\numberline {2.2.3}Information-Theoretic Training Objectives}{9}{subsubsection.2.2.3}%
 \contentsline {subsubsection}{\numberline {2.2.4}Curriculum Learning}{9}{subsubsection.2.2.4}%
-\contentsline {subsection}{\numberline {2.3}Assessment and Relation to Project}{10}{subsection.2.3}%
-\contentsline {section}{\numberline {3}Critical Comparison with ChatGPT}{11}{section.3}%
-\contentsline {subsection}{\numberline {3.1}Prompts Used}{11}{subsection.3.1}%
-\contentsline {subsection}{\numberline {3.2}AI-Generated Literature Survey}{11}{subsection.3.2}%
-\contentsline {subsection}{\numberline {3.3}Observations on Quality and Accuracy}{11}{subsection.3.3}%
+\contentsline {subsubsection}{\numberline {2.2.5}Statistical Methods for Chess Engine Evaluation}{10}{subsubsection.2.2.5}%
+\contentsline {subsection}{\numberline {2.3}Assessment and Relation to Project}{11}{subsection.2.3}%
+\contentsline {section}{\numberline {3}Critical Comparison with ChatGPT}{12}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Prompts Used}{12}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}AI-Generated Literature Survey}{12}{subsection.3.2}%
+\contentsline {subsubsection}{\numberline {3.2.1}Follow-up: Comparing Naive, Information-Theoretic, and Gradient-Based Weighting}{15}{subsubsection.3.2.1}%
+\contentsline {subsection}{\numberline {3.3}Observations on Quality and Accuracy}{19}{subsection.3.3}%
