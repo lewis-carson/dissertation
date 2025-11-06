@@ -1,0 +1,45 @@
+
+Starting training with streaming dataset...
+Note: Training on full dataset across all CSV files
+
+============================================================
+Epoch 1/600
+============================================================
+Processing file 1/1: training-run1-test80-20240116-0617.no-db.csv
+  Batch 0, Avg Loss: 0.014044, Current Loss: 0.014044
+  Batch 500, Avg Loss: 0.174223, Current Loss: 0.005686
+  Batch 1000, Avg Loss: 0.169576, Current Loss: 0.992657
+  Batch 1500, Avg Loss: 0.165298, Current Loss: 0.011641
+  Batch 2000, Avg Loss: 0.160706, Current Loss: 0.055799
+  Batch 2500, Avg Loss: 0.157584, Current Loss: 0.205706
+  Batch 3000, Avg Loss: 0.157522, Current Loss: 0.757183
+  Batch 3500, Avg Loss: 0.158259, Current Loss: 0.285940
+  Batch 4000, Avg Loss: 0.156960, Current Loss: 0.033422
+Traceback (most recent call last):
+  File "/Users/lewis/diss/halfkp/train.py", line 631, in <module>
+    main()
+    ~~~~^^
+  File "/Users/lewis/diss/halfkp/train.py", line 599, in main
+    train_loss = train_epoch(model, train_loader, optimizer, criterion, device, is_streaming=True)
+  File "/Users/lewis/diss/halfkp/train.py", line 408, in train_epoch
+    for batch_idx, (white_feat, black_feat, evals) in enumerate(dataloader):
+                                                      ~~~~~~~~~^^^^^^^^^^^^
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 732, in __next__
+    data = self._next_data()
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 788, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/torch/utils/data/_utils/fetch.py", line 33, in fetch
+    data.append(next(self.dataset_iter))
+                ~~~~^^^^^^^^^^^^^^^^^^^
+  File "/Users/lewis/diss/halfkp/train.py", line 139, in __iter__
+    result = process_position(row)
+  File "/Users/lewis/diss/halfkp/train.py", line 95, in process_position
+    eval_score = np.clip(eval_score, -1.0, 1.0)
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py", line 2330, in clip
+    return _wrapfunc(a, 'clip', a_min, a_max, out=out, **kwargs)
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py", line 57, in _wrapfunc
+    return bound(*args, **kwds)
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 115, in _clip
+    return um.clip(a, min, max, out=out, **kwargs)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

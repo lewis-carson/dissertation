@@ -17,7 +17,7 @@ FILES = [
     "test80-2024-09-sep-2tb7p.tar.zst",
 ]
 
-OUTPUT_DIR = "test80_full_data"
+OUTPUT_DIR = "data/"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def download_file(url, path):
@@ -84,5 +84,8 @@ for filename in FILES:
 
     print(f"Deleting {os.path.basename(tar_path)}...")
     os.remove(tar_path)
+    
+    print(f"Deleting {os.path.basename(zst_path)}...")
+    os.remove(zst_path)
 
-print("All files downloaded, extracted, and tar files deleted.")
+print("All files downloaded, extracted, and cleaned up.")

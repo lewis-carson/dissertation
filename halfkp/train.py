@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import glob
+import shutil
+import subprocess
 import wandb
 import sys
 import argparse
@@ -109,36 +111,30 @@ def process_position(row):
 
 class StreamingChessDataset(IterableDataset):
     """Streaming dataset that loads CSV files one at a time."""
-    
-    def __init__(self, data_dir, chunk_size=10000, shuffle_files=True):
+
+    def __init__(self, csv_files, chunk_size=10000, shuffle_files=True):
         super().__init__()
-        self.data_dir = Path(data_dir)
         self.chunk_size = chunk_size
         self.shuffle_files = shuffle_files
-        
-        # Find all CSV files
-        self.csv_files = sorted(glob.glob(str(self.data_dir / "*.csv")))
-        
+
+        self.csv_files = [str(Path(f)) for f in csv_files]
+
         if not self.csv_files:
-            raise ValueError(f"No CSV files found in {data_dir}")
-        
+            raise ValueError("No CSV files provided for streaming dataset")
+
         print(f"Found {len(self.csv_files)} CSV files to process")
-        
+
     def __iter__(self):
-        # Optionally shuffle file order each epoch
         files_to_process = self.csv_files.copy()
         if self.shuffle_files:
             np.random.shuffle(files_to_process)
-        
-        # Process each file
+
         for file_idx, csv_file in enumerate(files_to_process):
             if file_idx % 10 == 0:
                 print(f"Processing file {file_idx + 1}/{len(files_to_process)}: {Path(csv_file).name}")
-            
+
             try:
-                # Read file in chunks to avoid memory issues with very large files
                 for chunk in pd.read_csv(csv_file, chunksize=self.chunk_size):
-                    # Process each row in the chunk
                     for _, row in chunk.iterrows():
                         result = process_position(row)
                         if result is not None:
@@ -187,6 +183,130 @@ class ChessDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.data[idx]
+
+
+def _gather_paths(base_dir, patterns):
+    """Collect files in base_dir matching patterns."""
+    collected = []
+    for pattern in patterns:
+        collected.extend(Path(base_dir).glob(pattern))
+
+    unique = []
+    seen = set()
+    for path in collected:
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(path)
+
+    unique.sort()
+    return unique
+
+
+def _locate_binpack_reader(executable_hint=None):
+    """Find the compiled binpack-reader binary, building it if needed."""
+    if executable_hint:
+        candidate = Path(executable_hint)
+        if candidate.exists() and candidate.is_file():
+            return candidate
+
+    repo_root = Path(__file__).parent.parent
+    project_root = repo_root / "data-hf" / "binpack-reader"
+    candidates = [
+        project_root / "target" / "release" / "binpack-reader",
+        project_root / "target" / "debug" / "binpack-reader",
+    ]
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+
+    cargo = shutil.which("cargo")
+    if cargo is None:
+        return None
+
+    print("binpack-reader binary not found, building with cargo...")
+    try:
+        subprocess.run(
+            [cargo, "build", "--release"],
+            cwd=project_root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.decode("utf-8", errors="ignore") if exc.stderr else ""
+        print("Failed to build binpack-reader with cargo.")
+        if stderr:
+            print(stderr.strip())
+        return None
+
+    built_candidate = project_root / "target" / "release" / "binpack-reader"
+    if built_candidate.exists() and built_candidate.is_file():
+        return built_candidate
+
+    print("binpack-reader build completed but executable not found.")
+    return None
+
+
+def _ensure_binpack_converted(
+    data_dir,
+    cache_dir=None,
+    converter_path=None,
+    force=False,
+    jobs=None,
+):
+    """Convert binpack files to CSV using the helper binary."""
+    data_dir = Path(data_dir)
+    cache_dir = Path(cache_dir) if cache_dir else data_dir / "_binpack_csv"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    binpack_patterns = ["*.binpack", "*.no-db.binpack"]
+    binpack_files = _gather_paths(data_dir, binpack_patterns)
+
+    if not binpack_files:
+        raise ValueError(f"No binpack files found in {data_dir}")
+
+    expected_outputs = [cache_dir / (path.stem + ".csv") for path in binpack_files]
+
+    missing_outputs = [p for p in expected_outputs if not p.exists()]
+
+    if not force and not missing_outputs:
+        print(f"Using cached binpack CSV files from {cache_dir}")
+        return [str(p) for p in expected_outputs]
+
+    converter_path = _locate_binpack_reader(converter_path)
+    if converter_path is None:
+        raise RuntimeError(
+            "Could not locate or build binpack-reader binary. Please run "
+            "`cargo build --release` in data-hf/binpack-reader or provide "
+            "pre-converted CSV files."
+        )
+
+    print(f"Converting {len(binpack_files)} binpack file(s) to CSV using {converter_path}")
+
+    cmd = [str(converter_path), str(data_dir), str(cache_dir)]
+    if force:
+        cmd.append("--force")
+    if jobs:
+        cmd.extend(["--jobs", str(jobs)])
+
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"binpack-reader failed with exit code {exc.returncode}."
+        ) from exc
+
+    csv_files = [p for p in expected_outputs if p.exists()]
+    if not csv_files:
+        raise RuntimeError(
+            "Binpack conversion completed but no CSV files were produced."
+        )
+
+    print(f"Binpack conversion complete. Generated {len(csv_files)} CSV file(s) in {cache_dir}")
+
+    return [str(path) for path in csv_files]
 
 
 def collate_fn(batch):
@@ -350,7 +470,15 @@ def validate(model, dataloader, criterion, device):
 def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Train HalfKP chess neural network')
-    parser.add_argument('data_dir', nargs='?', help='Directory containing CSV files (default: ../data/out)')
+    parser.add_argument('data_dir', nargs='?', help='Directory containing binpack training data')
+    parser.add_argument('--binpack-cache', default=None,
+                        help='Directory to store converted CSV files from binpack data.')
+    parser.add_argument('--binpack-force', action='store_true',
+                        help='Force reconversion of binpack files to CSV even if cache exists.')
+    parser.add_argument('--binpack-jobs', type=int, default=None,
+                        help='Number of worker jobs for binpack conversion (passes through to binpack-reader).')
+    parser.add_argument('--binpack-converter', default=None,
+                        help='Path to an existing binpack-reader binary to use for conversion.')
     args = parser.parse_args()
     
     # Hyperparameters
@@ -383,21 +511,30 @@ def main():
     
     # Data directory - use argument or default
     if args.data_dir:
-        data_dir = Path(args.data_dir)
+        data_dir = Path(args.data_dir).expanduser()
     else:
-        data_dir = Path(__file__).parent.parent / "data" / "out"
-    
+        data_dir = Path(__file__).parent.parent / "data"
+
     if not data_dir.exists():
         raise ValueError(f"Data directory not found: {data_dir}")
-    
+
     print(f"Data directory: {data_dir}")
+
+    binpack_paths = _gather_paths(data_dir, ["*.binpack", "*.no-db.binpack"])
     
-    # Get list of all CSV files
-    csv_files = sorted(glob.glob(str(data_dir / "*.csv")))
-    print(f"Found {len(csv_files)} CSV files in {data_dir}")
-    
-    if not csv_files:
-        raise ValueError(f"No CSV files found in {data_dir}")
+    if not binpack_paths:
+        raise ValueError(f"No binpack files found in {data_dir}")
+
+    cache_dir = Path(args.binpack_cache).expanduser() if args.binpack_cache else data_dir / "_binpack_csv"
+    csv_files = _ensure_binpack_converted(
+        data_dir=data_dir,
+        cache_dir=cache_dir,
+        converter_path=args.binpack_converter,
+        force=args.binpack_force,
+        jobs=args.binpack_jobs,
+    )
+
+    print(f"Using {len(csv_files)} CSV file(s) from {cache_dir}")
     
     # Create validation set from a random subset of files
     # Randomize file selection to avoid chronological bias
@@ -412,7 +549,7 @@ def main():
     
     # Create streaming training dataset (all files)
     print("\nCreating streaming training dataset...")
-    train_dataset = StreamingChessDataset(data_dir, chunk_size=10000, shuffle_files=True)
+    train_dataset = StreamingChessDataset(csv_files, chunk_size=10000, shuffle_files=True)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE,
                              collate_fn=collate_fn, num_workers=0)
     
@@ -446,6 +583,8 @@ def main():
             "device": str(device),
             "num_csv_files": len(csv_files),
             "data_dir": str(data_dir),
+            "binpack_cache_dir": str(cache_dir),
+            "binpack_converter": args.binpack_converter,
         }
     )
     

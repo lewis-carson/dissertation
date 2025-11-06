@@ -12,15 +12,18 @@
 set -e
 cd "$(dirname "$0")"
 
-# Activate virtual environment
-source ../.venv/bin/activate
+# Load Python module if available
+module load python 2>/dev/null || true
+
+# Install dependencies to user site-packages
+python -m pip install --user torch wandb
 
 # Create logs directory if it doesn't exist
 mkdir -p logs
 
 # Run training with data directory argument
-# Default to ../data/out if not specified
-DATA_DIR="${1:-../data/out}"
+# Default to ./data/out if not specified
+DATA_DIR="${1:-./data/}"
 
 echo "Starting HalfKP training job"
 echo "Data directory: $DATA_DIR"

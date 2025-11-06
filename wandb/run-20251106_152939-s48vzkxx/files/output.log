@@ -1,0 +1,40 @@
+
+Starting training with streaming dataset...
+Note: Training on full dataset across all CSV files
+
+============================================================
+Epoch 1/600
+============================================================
+Processing file 1/1: training-run1-test80-20240116-0617.no-db.csv
+  Batch 0, Avg Loss: 0.014044, Current Loss: 0.014044
+Traceback (most recent call last):
+  File "/Users/lewis/diss/halfkp/train.py", line 665, in <module>
+    main()
+    ~~~~^^
+  File "/Users/lewis/diss/halfkp/train.py", line 633, in main
+    train_loss = train_epoch(model, train_loader, optimizer, criterion, device, is_streaming=True)
+  File "/Users/lewis/diss/halfkp/train.py", line 408, in train_epoch
+    for batch_idx, (white_feat, black_feat, evals) in enumerate(dataloader):
+                                                      ~~~~~~~~~^^^^^^^^^^^^
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 732, in __next__
+    data = self._next_data()
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 788, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/torch/utils/data/_utils/fetch.py", line 33, in fetch
+    data.append(next(self.dataset_iter))
+                ~~~~^^^^^^^^^^^^^^^^^^^
+  File "/Users/lewis/diss/halfkp/train.py", line 138, in __iter__
+    for _, row in chunk.iterrows():
+                  ~~~~~~~~~~~~~~^^
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/pandas/core/frame.py", line 1563, in iterrows
+    s = klass(v, index=columns, name=k).__finalize__(self)
+        ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/pandas/core/series.py", line 591, in __init__
+    data = SingleBlockManager.from_array(data, index, refs=refs)
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/pandas/core/internals/managers.py", line 1890, in from_array
+    bp = BlockPlacement(slice(0, len(index)))
+                                 ~~~^^^^^^^
+  File "/Users/lewis/diss/.venv/lib/python3.13/site-packages/pandas/core/indexes/base.py", line 912, in __len__
+    def __len__(self) -> int:
+
+KeyboardInterrupt
