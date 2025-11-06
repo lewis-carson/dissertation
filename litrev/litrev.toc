@@ -14,10 +14,10 @@
 \contentsline {subsection}{\numberline {2.2}Key Themes in Sample-Efficient Chess Training}{7}{subsection.2.2}%
 \contentsline {subsubsection}{\numberline {2.2.1}Prioritized Replay and Non-IID Sampling}{7}{subsubsection.2.2.1}%
 \contentsline {subsubsection}{\numberline {2.2.2}Sample Weighting Functions}{8}{subsubsection.2.2.2}%
-\contentsline {subsubsection}{\numberline {2.2.3}Information-Theoretic Training Objectives}{9}{subsubsection.2.2.3}%
+\contentsline {subsubsection}{\numberline {2.2.3}Information-Theoretic Training Objectives}{8}{subsubsection.2.2.3}%
 \contentsline {subsubsection}{\numberline {2.2.4}Curriculum Learning}{9}{subsubsection.2.2.4}%
-\contentsline {subsubsection}{\numberline {2.2.5}Statistical Methods for Chess Engine Evaluation}{10}{subsubsection.2.2.5}%
-\contentsline {subsection}{\numberline {2.3}Assessment and Relation to Project}{11}{subsection.2.3}%
+\contentsline {subsubsection}{\numberline {2.2.5}Statistical Methods for Chess Engine Evaluation}{9}{subsubsection.2.2.5}%
+\contentsline {subsection}{\numberline {2.3}Assessment and Relation to Project}{10}{subsection.2.3}%
 \contentsline {section}{\numberline {3}Critical Comparison with ChatGPT}{12}{section.3}%
 \contentsline {subsection}{\numberline {3.1}Prompts Used}{12}{subsection.3.1}%
 \contentsline {subsection}{\numberline {3.2}AI-Generated Literature Survey}{12}{subsection.3.2}%

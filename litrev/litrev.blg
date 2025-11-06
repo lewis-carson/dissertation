@@ -3,48 +3,44 @@ Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
 The top-level auxiliary file: litrev.aux
 The style file: plainnat.bst
 Database file #1: litrev.bib
-Warning--entry type for "fishtest2024math" isn't style-file defined
---line 263 of file litrev.bib
-Warning--empty booktitle in settles2009
-You've used 29 entries,
+You've used 28 entries,
             2773 wiz_defined-function locations,
-            746 strings with 9547 characters,
-and the built_in function-call counts, 13579 in all, are:
-= -- 1192
-> -- 802
-< -- 25
-+ -- 277
-- -- 246
-* -- 991
-:= -- 2059
-add.period$ -- 94
-call.type$ -- 29
-change.case$ -- 164
-chr.to.int$ -- 27
-cite$ -- 59
-duplicate$ -- 646
-empty$ -- 1122
-format.name$ -- 290
-if$ -- 2891
+            739 strings with 9415 characters,
+and the built_in function-call counts, 13062 in all, are:
+= -- 1150
+> -- 772
+< -- 24
++ -- 267
+- -- 237
+* -- 955
+:= -- 1987
+add.period$ -- 91
+call.type$ -- 28
+change.case$ -- 157
+chr.to.int$ -- 26
+cite$ -- 56
+duplicate$ -- 620
+empty$ -- 1070
+format.name$ -- 278
+if$ -- 2778
 int.to.chr$ -- 3
 int.to.str$ -- 1
-missing$ -- 26
-newline$ -- 158
-num.names$ -- 116
-pop$ -- 382
+missing$ -- 24
+newline$ -- 153
+num.names$ -- 112
+pop$ -- 364
 preamble$ -- 1
-purify$ -- 137
+purify$ -- 132
 quote$ -- 0
-skip$ -- 523
+skip$ -- 505
 stack$ -- 0
-substring$ -- 404
-swap$ -- 103
+substring$ -- 386
+swap$ -- 102
 text.length$ -- 7
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 309
-warning$ -- 1
-while$ -- 115
+type$ -- 298
+warning$ -- 0
+while$ -- 110
 width$ -- 0
-write$ -- 379
-(There were 2 warnings)
+write$ -- 368

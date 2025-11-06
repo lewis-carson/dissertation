@@ -8,6 +8,8 @@ import pandas as pd
 from pathlib import Path
 import glob
 import wandb
+import sys
+import argparse
 
 
 # HalfKP feature dimensions
@@ -54,12 +56,13 @@ def get_halfkp_features(board, perspective):
         
         # Calculate piece type index (0-9)
         # White pieces: 0-4, Black pieces: 5-9
+        # NOTE: KING pieces are not included in HalfKP encoding (only the perspective king is used for bucketing)
         if piece.piece_type == chess.KING:
-            # Enemy king (only one piece type for king)
-            piece_idx = 5 if piece.color == chess.WHITE else 9
-        else:
-            base_idx = PIECE_TO_INDEX[piece.piece_type]
-            piece_idx = base_idx if piece.color == chess.WHITE else (base_idx + 5)
+            # Skip enemy king - HalfKP only uses the perspective king for feature bucketing
+            continue
+        
+        base_idx = PIECE_TO_INDEX[piece.piece_type]
+        piece_idx = base_idx if piece.color == chess.WHITE else (base_idx + 5)
         
         # Calculate feature index
         # feature = king_square * (64 * 10) + square * 10 + piece_idx
@@ -78,20 +81,16 @@ def process_position(row):
     """Process a single position row and return features."""
     try:
         board = chess.Board(row['fen'])
-        # Normalize win_prob - values can be extremely small or large
-        # Use log-space and clip to reasonable range
-        raw_eval = float(row['win_prob'])
+        # Use score column - normalize it
+        raw_score = float(row['score'])
         
-        # Handle edge cases
-        if raw_eval <= 0 or not np.isfinite(raw_eval):
-            eval_score = 0.0
-        elif raw_eval >= 1.0:
-            eval_score = 1.0
-        else:
-            # Use sigmoid-like transformation to map to [-1, 1]
-            # Take log and clip to avoid extreme values
-            log_eval = np.log(raw_eval)
-            eval_score = np.tanh(log_eval / 10.0)  # Scale and squash
+        # Handle edge cases and normalize score to [-1, 1] range
+        # Scores can range widely, so we use tanh to squash them
+        # Divide by a scaling factor to make the range reasonable
+        eval_score = np.tanh(raw_score / 1000.0)  # Scale by 1000
+        
+        # Clip to valid range
+        eval_score = np.clip(eval_score, -1.0, 1.0)
         
         # Get features for both sides
         white_features = get_halfkp_features(board, chess.WHITE)
@@ -191,20 +190,18 @@ class ChessDataset(Dataset):
 
 
 def collate_fn(batch):
-    """Custom collate function to create sparse tensors."""
+    """Custom collate function to create dense feature tensors."""
     batch_size = len(batch)
     
-    # Create sparse feature tensors
+    # Create feature lists
     white_features_list = []
     black_features_list = []
     evals = []
-    stm_list = []
     
     for item in batch:
         white_features_list.append(item['white_features'])
         black_features_list.append(item['black_features'])
         evals.append(item['eval'])
-        stm_list.append(1.0 if item['stm'] == chess.WHITE else -1.0)
     
     # Convert to dense tensors (one-hot encoding)
     white_dense = torch.zeros((batch_size, HALFKP_FEATURES))
@@ -217,9 +214,8 @@ def collate_fn(batch):
             black_dense[i, bf] = 1.0
     
     evals_tensor = torch.tensor(evals, dtype=torch.float32)
-    stm_tensor = torch.tensor(stm_list, dtype=torch.float32)
     
-    return white_dense, black_dense, evals_tensor, stm_tensor
+    return white_dense, black_dense, evals_tensor
 
 
 class HalfKPNetwork(nn.Module):
@@ -289,7 +285,7 @@ def train_epoch(model, dataloader, optimizer, criterion, device, is_streaming=Fa
     total_loss = 0.0
     num_batches = 0
     
-    for batch_idx, (white_feat, black_feat, evals, stm) in enumerate(dataloader):
+    for batch_idx, (white_feat, black_feat, evals) in enumerate(dataloader):
         white_feat = white_feat.to(device)
         black_feat = black_feat.to(device)
         evals = evals.to(device)
@@ -337,7 +333,7 @@ def validate(model, dataloader, criterion, device):
     num_batches = 0
     
     with torch.no_grad():
-        for white_feat, black_feat, evals, stm in dataloader:
+        for white_feat, black_feat, evals in dataloader:
             white_feat = white_feat.to(device)
             black_feat = black_feat.to(device)
             evals = evals.to(device)
@@ -352,6 +348,11 @@ def validate(model, dataloader, criterion, device):
 
 
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Train HalfKP chess neural network')
+    parser.add_argument('data_dir', nargs='?', help='Directory containing CSV files (default: ../data/out)')
+    args = parser.parse_args()
+    
     # Hyperparameters
     BATCH_SIZE = 16384 // 64
     LEARNING_RATE = 8.75e-4
@@ -380,11 +381,16 @@ def main():
         print(f"Using device: CPU")
     print(f"Device: {device}")
     
-    # Data directory
-    data_dir = Path(__file__).parent.parent / "data" / "out"
+    # Data directory - use argument or default
+    if args.data_dir:
+        data_dir = Path(args.data_dir)
+    else:
+        data_dir = Path(__file__).parent.parent / "data" / "out"
     
     if not data_dir.exists():
         raise ValueError(f"Data directory not found: {data_dir}")
+    
+    print(f"Data directory: {data_dir}")
     
     # Get list of all CSV files
     csv_files = sorted(glob.glob(str(data_dir / "*.csv")))
@@ -393,10 +399,12 @@ def main():
     if not csv_files:
         raise ValueError(f"No CSV files found in {data_dir}")
     
-    # Create validation set from first file(s)
-    # Use a small subset for validation to keep it in memory
-    val_files = csv_files[:max(1, len(csv_files) // 20)]  # Use ~5% of files for validation
-    print(f"Using {len(val_files)} file(s) for validation set")
+    # Create validation set from a random subset of files
+    # Randomize file selection to avoid chronological bias
+    csv_files_shuffled = csv_files.copy()
+    np.random.shuffle(csv_files_shuffled)
+    val_files = csv_files_shuffled[:max(1, len(csv_files) // 20)]  # Use ~5% of files for validation
+    print(f"Using {len(val_files)} randomly selected file(s) for validation set")
     
     val_dataset = ChessDataset(val_files, max_samples=VAL_SAMPLES)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False,
@@ -437,6 +445,7 @@ def main():
             "streaming": STREAMING,
             "device": str(device),
             "num_csv_files": len(csv_files),
+            "data_dir": str(data_dir),
         }
     )
     

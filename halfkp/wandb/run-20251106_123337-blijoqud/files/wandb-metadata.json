@@ -1,0 +1,39 @@
+{
+  "os": "macOS-15.5-arm64-arm-64bit-Mach-O",
+  "python": "CPython 3.13.7",
+  "startedAt": "2025-11-06T12:33:37.912526Z",
+  "args": [
+    "/Users/lewis/diss/data/data-test80-csv"
+  ],
+  "program": "/Users/lewis/diss/halfkp/train.py",
+  "codePath": "halfkp/train.py",
+  "codePathLocal": "train.py",
+  "git": {
+    "commit": "e258e338765a454665e2fefa2df89233e480dc41"
+  },
+  "email": "looey2005@gmail.com",
+  "root": "/Users/lewis/diss/halfkp",
+  "host": "Lewiss-MacBook-Pro-2.local",
+  "executable": "/Users/lewis/diss/.venv/bin/python",
+  "cpu_count": 8,
+  "cpu_count_logical": 8,
+  "disk": {
+    "/": {
+      "total": "994662584320",
+      "used": "767931916288"
+    }
+  },
+  "memory": {
+    "total": "17179869184"
+  },
+  "apple": {
+    "name": "Apple M3",
+    "ecpuCores": 4,
+    "pcpuCores": 4,
+    "gpuCores": 10,
+    "memoryGb": 16,
+    "swapTotalBytes": "6442450944",
+    "ramTotalBytes": "17179869184"
+  },
+  "writerId": "0hick67154ydf37blwrua71lx9jt86m6"
+}

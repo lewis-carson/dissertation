@@ -1,0 +1,92 @@
+
+Starting training with streaming dataset...
+Note: Training on full dataset across all CSV files
+
+============================================================
+Epoch 1/600
+============================================================
+Processing file 1/29: training-run1-test80-20240102-0217.no-db.csv
+  Batch 0, Avg Loss: 0.124655, Current Loss: 0.124655
+  Batch 500, Avg Loss: 0.148388, Current Loss: 0.043466
+  Batch 1000, Avg Loss: 0.159915, Current Loss: 0.052418
+  Batch 1500, Avg Loss: 0.160347, Current Loss: 0.020201
+  Batch 2000, Avg Loss: 0.160780, Current Loss: 0.620948
+  Batch 2500, Avg Loss: 0.161461, Current Loss: 0.542125
+  Batch 3000, Avg Loss: 0.160019, Current Loss: 0.123752
+  Batch 3500, Avg Loss: 0.159644, Current Loss: 0.103141
+  Batch 4000, Avg Loss: 0.159679, Current Loss: 0.015656
+  Batch 4500, Avg Loss: 0.161804, Current Loss: 0.129019
+  Batch 5000, Avg Loss: 0.161748, Current Loss: 0.012364
+  Batch 5500, Avg Loss: 0.160959, Current Loss: 0.082314
+  Batch 6000, Avg Loss: 0.161175, Current Loss: 0.071833
+  Batch 6500, Avg Loss: 0.161141, Current Loss: 0.126831
+  Batch 7000, Avg Loss: 0.161385, Current Loss: 0.081713
+  Batch 7500, Avg Loss: 0.162224, Current Loss: 0.073254
+  Batch 8000, Avg Loss: 0.163006, Current Loss: 0.007915
+  Batch 8500, Avg Loss: 0.161983, Current Loss: 0.063573
+  Batch 9000, Avg Loss: 0.161892, Current Loss: 0.321847
+  Batch 9500, Avg Loss: 0.162367, Current Loss: 0.074180
+  Batch 10000, Avg Loss: 0.162592, Current Loss: 0.098748
+  Batch 10500, Avg Loss: 0.161429, Current Loss: 0.020036
+  Batch 11000, Avg Loss: 0.160905, Current Loss: 0.135375
+  Batch 11500, Avg Loss: 0.160953, Current Loss: 0.008955
+  Batch 12000, Avg Loss: 0.160806, Current Loss: 0.343220
+  Batch 12500, Avg Loss: 0.160615, Current Loss: 0.157723
+  Batch 13000, Avg Loss: 0.160672, Current Loss: 0.010037
+  Batch 13500, Avg Loss: 0.160823, Current Loss: 0.100403
+  Batch 14000, Avg Loss: 0.160965, Current Loss: 0.058695
+  Batch 14500, Avg Loss: 0.161123, Current Loss: 0.468395
+  Batch 15000, Avg Loss: 0.161562, Current Loss: 0.803060
+  Batch 15500, Avg Loss: 0.161760, Current Loss: 0.092064
+  Batch 16000, Avg Loss: 0.161825, Current Loss: 0.344366
+  Batch 16500, Avg Loss: 0.162001, Current Loss: 0.530523
+  Batch 17000, Avg Loss: 0.162121, Current Loss: 0.341456
+  Batch 17500, Avg Loss: 0.162531, Current Loss: 0.271577
+  Batch 18000, Avg Loss: 0.162221, Current Loss: 0.341546
+  Batch 18500, Avg Loss: 0.162106, Current Loss: 0.062066
+  Batch 19000, Avg Loss: 0.162111, Current Loss: 0.077536
+  Batch 19500, Avg Loss: 0.162396, Current Loss: 0.058809
+  Batch 20000, Avg Loss: 0.162608, Current Loss: 0.808582
+  Batch 20500, Avg Loss: 0.162505, Current Loss: 0.115724
+  Batch 21000, Avg Loss: 0.162140, Current Loss: 0.010917
+  Batch 21500, Avg Loss: 0.162197, Current Loss: 0.011507
+  Batch 22000, Avg Loss: 0.162022, Current Loss: 0.031420
+  Batch 22500, Avg Loss: 0.161741, Current Loss: 0.001316
+  Batch 23000, Avg Loss: 0.161958, Current Loss: 0.003703
+  Batch 23500, Avg Loss: 0.161810, Current Loss: 0.150564
+  Batch 24000, Avg Loss: 0.161775, Current Loss: 0.001237
+  Batch 24500, Avg Loss: 0.161764, Current Loss: 0.632537
+  Batch 25000, Avg Loss: 0.161627, Current Loss: 0.026582
+  Batch 25500, Avg Loss: 0.161604, Current Loss: 0.075982
+  Batch 26000, Avg Loss: 0.161580, Current Loss: 0.002466
+  Batch 26500, Avg Loss: 0.161617, Current Loss: 0.055916
+  Batch 27000, Avg Loss: 0.161552, Current Loss: 0.021384
+  Batch 27500, Avg Loss: 0.161477, Current Loss: 0.335151
+  Batch 28000, Avg Loss: 0.161460, Current Loss: 0.007746
+  Batch 28500, Avg Loss: 0.161233, Current Loss: 0.226186
+  Batch 29000, Avg Loss: 0.161442, Current Loss: 0.086114
+  Batch 29500, Avg Loss: 0.161581, Current Loss: 0.022362
+  Batch 30000, Avg Loss: 0.161601, Current Loss: 0.015512
+  Batch 30500, Avg Loss: 0.161599, Current Loss: 0.034448
+  Batch 31000, Avg Loss: 0.161334, Current Loss: 0.111340
+  Batch 31500, Avg Loss: 0.161504, Current Loss: 0.034334
+  Batch 32000, Avg Loss: 0.161406, Current Loss: 0.040744
+  Batch 32500, Avg Loss: 0.161425, Current Loss: 0.092444
+  Batch 33000, Avg Loss: 0.161146, Current Loss: 0.218311
+  Batch 33500, Avg Loss: 0.160961, Current Loss: 0.018572
+  Batch 34000, Avg Loss: 0.160918, Current Loss: 0.150754
+  Batch 34500, Avg Loss: 0.161172, Current Loss: 0.102931
+  Batch 35000, Avg Loss: 0.160986, Current Loss: 0.295492
+  Batch 35500, Avg Loss: 0.161247, Current Loss: 0.052121
+  Batch 36000, Avg Loss: 0.161456, Current Loss: 0.376216
+  Batch 36500, Avg Loss: 0.161422, Current Loss: 0.327741
+  Batch 37000, Avg Loss: 0.161300, Current Loss: 0.234463
+  Batch 37500, Avg Loss: 0.161129, Current Loss: 0.072872
+Traceback (most recent call last):
+  File "/Users/lewis/diss/halfkp/train.py", line 492, in <module>
+    main()
+    ~~~~^^
+  File "/Users/lewis/diss/halfkp/train.py", line 460, in main
+    train_loss = train_epoch(model, train_loader, optimizer, criterion, device, is_streaming=True)
+  File "/Users/lewis/diss/halfkp/train.py", line 292, in train_epoch
+KeyboardInterrupt
