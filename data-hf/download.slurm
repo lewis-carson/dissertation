@@ -14,6 +14,7 @@ echo "Host: $(hostname)"
 echo "Working directory: $(pwd)"
 
 # Install dependencies if needed
+python3 -m venv .venv
 source .venv/bin/activate
 pip install requests zstandard
 
