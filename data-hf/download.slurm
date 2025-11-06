@@ -3,9 +3,9 @@
 #SBATCH --output=logs/data-download-%j.log
 #SBATCH --error=logs/data-download-%j.err
 #SBATCH --time=48:00:00
-#SBATCH --mem=32GB
-#SBATCH --cpus-per-task=4
-#SBATCH --partition=cpu
+#SBATCH --mem=16GB
+#SBATCH --cpus-per-task=1
+#SBATCH --partition=shared
 
 # Set environment
 set -e
