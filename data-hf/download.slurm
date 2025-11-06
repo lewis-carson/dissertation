@@ -13,10 +13,11 @@ echo "Time: $(date)"
 echo "Host: $(hostname)"
 echo "Working directory: $(pwd)"
 
-# Install dependencies if needed
-python3 -m venv .venv
-source .venv/bin/activate
-pip install requests zstandard
+# Load Python module if available
+module load python 2>/dev/null || true
+
+# Install dependencies to user site-packages
+python -m pip install --user requests zstandard
 
 # Run download script
 python download.py
