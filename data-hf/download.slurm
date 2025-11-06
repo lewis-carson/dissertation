@@ -7,13 +7,6 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --partition=shared
 
-# Set environment
-set -e
-cd "$(dirname "$0")"
-
-# Create logs directory if it doesn't exist
-mkdir -p logs
-
 echo "Starting data download job"
 echo "SLURM Job ID: $SLURM_JOB_ID"
 echo "Time: $(date)"
