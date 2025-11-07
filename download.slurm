@@ -5,7 +5,7 @@
 #SBATCH --time=48:00:00
 #SBATCH --mem=16GB
 #SBATCH --cpus-per-task=1
-#SBATCH --partition=shared
+#SBATCH --partition=cpu
 
 echo "Starting data download job"
 echo "SLURM Job ID: $SLURM_JOB_ID"
