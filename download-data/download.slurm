@@ -13,13 +13,8 @@ echo "Time: $(date)"
 echo "Host: $(hostname)"
 echo "Working directory: $(pwd)"
 
-# Load Python module if available
-module load python 2>/dev/null || true
+python3 -m pip install --user requests zstandard
 
-# Install dependencies to user site-packages
-python -m pip install --user requests zstandard
-
-# Run download script
-python download.py
+python3 download.py
 
 echo "Data download job completed at $(date)"
