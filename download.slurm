@@ -15,6 +15,6 @@ echo "Working directory: $(pwd)"
 
 python3 -m pip install --user requests zstandard
 
-python3 download.py
+python3 download-data/download.py
 
 echo "Data download job completed at $(date)"
