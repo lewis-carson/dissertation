@@ -4,14 +4,13 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, IterableDataset
 import chess
 import numpy as np
-import pandas as pd
 from pathlib import Path
-import glob
 import shutil
 import subprocess
 import wandb
 import sys
 import argparse
+import time
 
 
 # HalfKP feature dimensions
@@ -110,86 +109,80 @@ def process_position(row):
 
 
 class StreamingChessDataset(IterableDataset):
-    """Streaming dataset that loads CSV files one at a time."""
+    """Streaming dataset that converts binpack files on the fly."""
 
-    def __init__(self, csv_files, chunk_size=10000, shuffle_files=True):
+    def __init__(self, binpack_files, converter_path, shuffle_files=True):
         super().__init__()
-        self.chunk_size = chunk_size
         self.shuffle_files = shuffle_files
+        self.converter_path = Path(converter_path)
+        self.binpack_files = [Path(path) for path in binpack_files]
 
-        self.csv_files = [str(Path(f)) for f in csv_files]
+        if not self.binpack_files:
+            raise ValueError("No binpack files provided for streaming dataset")
 
-        if not self.csv_files:
-            raise ValueError("No CSV files provided for streaming dataset")
-
-        print(f"Found {len(self.csv_files)} CSV files to process")
+        print(f"Found {len(self.binpack_files)} binpack file(s) to process")
 
     def __iter__(self):
-        files_to_process = self.csv_files.copy()
-        if self.shuffle_files:
+        files_to_process = self.binpack_files.copy()
+        if self.shuffle_files and len(files_to_process) > 1:
             np.random.shuffle(files_to_process)
 
-        for file_idx, csv_file in enumerate(files_to_process):
+        for file_idx, binpack_file in enumerate(files_to_process):
             if file_idx % 10 == 0:
-                print(f"Processing file {file_idx + 1}/{len(files_to_process)}: {Path(csv_file).name}")
+                print(f"Processing file {file_idx + 1}/{len(files_to_process)}: {binpack_file.name}")
 
             try:
-                for chunk in pd.read_csv(csv_file, chunksize=self.chunk_size):
-                    for _, row in chunk.iterrows():
-                        result = process_position(row)
-                        if result is not None:
-                            yield result
-            except Exception as e:
-                print(f"Error processing {csv_file}: {e}")
+                for row in _stream_binpack_entries(binpack_file, self.converter_path):
+                    result = process_position(row)
+                    if result is not None:
+                        yield result
+            except Exception as exc:
+                print(f"Error processing {binpack_file}: {exc}")
                 continue
 
 
 class ChessDataset(Dataset):
     """In-memory dataset for validation set (smaller subset)."""
-    
-    def __init__(self, csv_files, max_samples=10000):
+
+    def __init__(self, binpack_files, converter_path, max_samples=10000):
         self.data = []
-        
-        print(f"Loading validation data from {len(csv_files)} file(s)...")
-        
+        converter_path = Path(converter_path)
+        binpack_files = [Path(path) for path in binpack_files]
+
+        print(f"Loading validation data from {len(binpack_files)} file(s)...")
+
         total_loaded = 0
-        for csv_file in csv_files:
+        for binpack_file in binpack_files:
             if total_loaded >= max_samples:
                 break
-                
+
             try:
-                # Read file in chunks
-                chunk_size = min(10000, max_samples - total_loaded)
-                for chunk in pd.read_csv(csv_file, chunksize=chunk_size):
-                    for _, row in chunk.iterrows():
-                        if total_loaded >= max_samples:
-                            break
-                        
-                        result = process_position(row)
-                        if result is not None:
-                            self.data.append(result)
-                            total_loaded += 1
-                    
+                for row in _stream_binpack_entries(binpack_file, converter_path):
                     if total_loaded >= max_samples:
                         break
-            except Exception as e:
-                print(f"Error processing {csv_file}: {e}")
+
+                    result = process_position(row)
+                    if result is not None:
+                        self.data.append(result)
+                        total_loaded += 1
+            except Exception as exc:
+                print(f"Error processing {binpack_file}: {exc}")
                 continue
-        
+
         print(f"Successfully loaded {len(self.data)} validation positions")
-    
+
     def __len__(self):
         return len(self.data)
-    
+
     def __getitem__(self, idx):
         return self.data[idx]
 
 
 def _gather_paths(base_dir, patterns):
-    """Collect files in base_dir matching patterns."""
+    """Collect files in base_dir matching patterns recursively."""
     collected = []
     for pattern in patterns:
-        collected.extend(Path(base_dir).glob(pattern))
+        collected.extend(Path(base_dir).rglob(pattern))
 
     unique = []
     seen = set()
@@ -249,64 +242,64 @@ def _locate_binpack_reader(executable_hint=None):
     return None
 
 
-def _ensure_binpack_converted(
-    data_dir,
-    cache_dir=None,
-    converter_path=None,
-    force=False,
-    jobs=None,
-):
-    """Convert binpack files to CSV using the helper binary."""
-    data_dir = Path(data_dir)
-    cache_dir = Path(cache_dir) if cache_dir else data_dir / "_binpack_csv"
-    cache_dir.mkdir(parents=True, exist_ok=True)
+def _stream_binpack_entries(binpack_file, converter_path):
+    """Stream positions from a binpack file using the helper binary."""
+    binpack_file = Path(binpack_file)
+    converter_path = Path(converter_path)
 
-    binpack_patterns = ["*.binpack", "*.no-db.binpack"]
-    binpack_files = _gather_paths(data_dir, binpack_patterns)
+    if not binpack_file.exists():
+        raise FileNotFoundError(f"Binpack file not found: {binpack_file}")
 
-    if not binpack_files:
-        raise ValueError(f"No binpack files found in {data_dir}")
+    cmd = [
+        str(converter_path),
+        str(binpack_file.parent),
+        str(binpack_file.parent),
+        "--stdout",
+        "--single-file",
+        str(binpack_file),
+    ]
 
-    expected_outputs = [cache_dir / (path.stem + ".csv") for path in binpack_files]
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
 
-    missing_outputs = [p for p in expected_outputs if not p.exists()]
+    if process.stdout is None:
+        process.kill()
+        raise RuntimeError("Failed to open pipe to binpack-reader stdout")
 
-    if not force and not missing_outputs:
-        print(f"Using cached binpack CSV files from {cache_dir}")
-        return [str(p) for p in expected_outputs]
-
-    converter_path = _locate_binpack_reader(converter_path)
-    if converter_path is None:
-        raise RuntimeError(
-            "Could not locate or build binpack-reader binary. Please run "
-            "`cargo build --release` in data-hf/binpack-reader or provide "
-            "pre-converted CSV files."
-        )
-
-    print(f"Converting {len(binpack_files)} binpack file(s) to CSV using {converter_path}")
-
-    cmd = [str(converter_path), str(data_dir), str(cache_dir)]
-    if force:
-        cmd.append("--force")
-    if jobs:
-        cmd.extend(["--jobs", str(jobs)])
-
+    return_code = None
     try:
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(
-            f"binpack-reader failed with exit code {exc.returncode}."
-        ) from exc
+        for raw_line in process.stdout:
+            line = raw_line.strip()
+            if not line:
+                continue
 
-    csv_files = [p for p in expected_outputs if p.exists()]
-    if not csv_files:
-        raise RuntimeError(
-            "Binpack conversion completed but no CSV files were produced."
-        )
+            try:
+                fen, score_str = line.split("\t", 1)
+            except ValueError:
+                continue
 
-    print(f"Binpack conversion complete. Generated {len(csv_files)} CSV file(s) in {cache_dir}")
+            yield {
+                "fen": fen,
+                "score": score_str,
+            }
 
-    return [str(path) for path in csv_files]
+        return_code = process.wait()
+    finally:
+        stdout_stream = process.stdout
+        if stdout_stream is not None:
+            stdout_stream.close()
+
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        elif return_code not in (None, 0):
+            raise RuntimeError(
+                f"binpack-reader exited with status {return_code} while processing {binpack_file}"
+            )
 
 
 def collate_fn(batch):
@@ -404,8 +397,12 @@ def train_epoch(model, dataloader, optimizer, criterion, device, is_streaming=Fa
     model.train()
     total_loss = 0.0
     num_batches = 0
+    epoch_start_time = time.time()
+    batch_times = []
     
     for batch_idx, (white_feat, black_feat, evals) in enumerate(dataloader):
+        batch_start_time = time.time()
+        
         white_feat = white_feat.to(device)
         black_feat = black_feat.to(device)
         evals = evals.to(device)
@@ -433,15 +430,29 @@ def train_epoch(model, dataloader, optimizer, criterion, device, is_streaming=Fa
         total_loss += loss.item()
         num_batches += 1
         
-        # Log batch loss to wandb
-        wandb.log({"batch_loss": loss.item(), "batch": batch_idx})
+        # Calculate batch timing metrics
+        batch_time = time.time() - batch_start_time
+        batch_times.append(batch_time)
+        batch_size = white_feat.size(0)
+        samples_per_sec = batch_size / batch_time if batch_time > 0 else 0
+        
+        # Log batch loss and timing to wandb
+        wandb.log({
+            "batch_loss": loss.item(),
+            "batch": batch_idx,
+            "batch_time_sec": batch_time,
+            "samples_per_sec": samples_per_sec,
+        })
         
         if batch_idx % 500 == 0:
             avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
+            avg_batch_time = np.mean(batch_times[-100:]) if batch_times else 0  # Last 100 batches
             if is_streaming:
-                print(f"  Batch {batch_idx}, Avg Loss: {avg_loss:.6f}, Current Loss: {loss.item():.6f}")
+                print(f"  Batch {batch_idx}, Avg Loss: {avg_loss:.6f}, Current Loss: {loss.item():.6f}, "
+                      f"Batch Time: {batch_time:.3f}s, Samples/sec: {samples_per_sec:.0f}")
             else:
-                print(f"  Batch {batch_idx}/{len(dataloader)}, Loss: {loss.item():.6f}")
+                print(f"  Batch {batch_idx}/{len(dataloader)}, Loss: {loss.item():.6f}, "
+                      f"Batch Time: {batch_time:.3f}s, Samples/sec: {samples_per_sec:.0f}")
     
     return total_loss / num_batches if num_batches > 0 else 0.0
 
@@ -471,14 +482,8 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Train HalfKP chess neural network')
     parser.add_argument('data_dir', nargs='?', help='Directory containing binpack training data')
-    parser.add_argument('--binpack-cache', default=None,
-                        help='Directory to store converted CSV files from binpack data.')
-    parser.add_argument('--binpack-force', action='store_true',
-                        help='Force reconversion of binpack files to CSV even if cache exists.')
-    parser.add_argument('--binpack-jobs', type=int, default=None,
-                        help='Number of worker jobs for binpack conversion (passes through to binpack-reader).')
     parser.add_argument('--binpack-converter', default=None,
-                        help='Path to an existing binpack-reader binary to use for conversion.')
+                        help='Path to an existing binpack-reader binary to use for streaming conversion.')
     args = parser.parse_args()
     
     # Hyperparameters
@@ -525,31 +530,29 @@ def main():
     if not binpack_paths:
         raise ValueError(f"No binpack files found in {data_dir}")
 
-    cache_dir = Path(args.binpack_cache).expanduser() if args.binpack_cache else data_dir / "_binpack_csv"
-    csv_files = _ensure_binpack_converted(
-        data_dir=data_dir,
-        cache_dir=cache_dir,
-        converter_path=args.binpack_converter,
-        force=args.binpack_force,
-        jobs=args.binpack_jobs,
-    )
+    converter_path = _locate_binpack_reader(args.binpack_converter)
+    if converter_path is None:
+        raise RuntimeError(
+            "Could not locate or build binpack-reader binary. Please run "
+            "`cargo build --release` in data-hf/binpack-reader or provide an explicit path via --binpack-converter."
+        )
 
-    print(f"Using {len(csv_files)} CSV file(s) from {cache_dir}")
+    print(f"Using binpack-reader at {converter_path}")
     
     # Create validation set from a random subset of files
     # Randomize file selection to avoid chronological bias
-    csv_files_shuffled = csv_files.copy()
-    np.random.shuffle(csv_files_shuffled)
-    val_files = csv_files_shuffled[:max(1, len(csv_files) // 20)]  # Use ~5% of files for validation
+    binpack_paths_shuffled = binpack_paths.copy()
+    np.random.shuffle(binpack_paths_shuffled)
+    val_files = binpack_paths_shuffled[:max(1, len(binpack_paths) // 20)]  # Use ~5% of files for validation
     print(f"Using {len(val_files)} randomly selected file(s) for validation set")
     
-    val_dataset = ChessDataset(val_files, max_samples=VAL_SAMPLES)
+    val_dataset = ChessDataset(val_files, converter_path=converter_path, max_samples=VAL_SAMPLES)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False,
                            collate_fn=collate_fn, num_workers=0)
     
     # Create streaming training dataset (all files)
     print("\nCreating streaming training dataset...")
-    train_dataset = StreamingChessDataset(csv_files, chunk_size=10000, shuffle_files=True)
+    train_dataset = StreamingChessDataset(binpack_paths, converter_path=converter_path, shuffle_files=True)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE,
                              collate_fn=collate_fn, num_workers=0)
     
@@ -581,16 +584,16 @@ def main():
             "random_fen_skipping": RANDOM_FEN_SKIPPING,
             "streaming": STREAMING,
             "device": str(device),
-            "num_csv_files": len(csv_files),
+            "num_binpack_files": len(binpack_paths),
             "data_dir": str(data_dir),
-            "binpack_cache_dir": str(cache_dir),
-            "binpack_converter": args.binpack_converter,
+            "binpack_converter": str(converter_path),
+            "binpack_stream_mode": "stdout",
         }
     )
     
     # Training loop
     print("\nStarting training with streaming dataset...")
-    print("Note: Training on full dataset across all CSV files")
+    print("Note: Training on full dataset across all binpack files")
     for epoch in range(NUM_EPOCHS):
         print(f"\n{'='*60}")
         print(f"Epoch {epoch+1}/{NUM_EPOCHS}")
