@@ -6,20 +6,8 @@
 #SBATCH --mem=16GB
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=ug-gpu-small
-#SBATCH --gres=gpu:turing:1
+#SBATCH --gres=gpu:1g.10gb:1
 
-# Set environment
-set -e
-cd "$(dirname "$0")"
-
-# Load Python module if available
-module load python 2>/dev/null || true
-
-# Install dependencies to user site-packages
-python -m pip install --user torch wandb
-
-# Create logs directory if it doesn't exist
-mkdir -p logs
 
 # Run training with data directory argument
 # Default to ./data/out if not specified
