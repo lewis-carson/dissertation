@@ -204,7 +204,7 @@ def _locate_binpack_reader(executable_hint=None):
             return candidate
 
     repo_root = Path(__file__).parent.parent
-    project_root = repo_root / "data-hf" / "binpack-reader"
+    project_root = repo_root / "binpack-reader"
     candidates = [
         project_root / "target" / "release" / "binpack-reader",
         project_root / "target" / "debug" / "binpack-reader",
