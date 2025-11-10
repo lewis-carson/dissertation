@@ -3,10 +3,9 @@
 #SBATCH --output=logs/halfkp-train-%j.log
 #SBATCH --error=logs/halfkp-train-%j.err
 #SBATCH --time=48:00:00
-#SBATCH --mem=256GB
+#SBATCH --mem=32GB
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:a100:1
-#SBATCH --partition=gpu
+#SBATCH --partition=ug-gpu-small
 
 # Set environment
 set -e
