@@ -16,6 +16,6 @@ echo "Time: $(date)"
 echo "Host: $(hostname)"
 echo "GPU: $(nvidia-smi -L)"
 
-python halfkp/train.py 
+python -u halfkp/train.py 
 
 echo "Training job completed at $(date)"
