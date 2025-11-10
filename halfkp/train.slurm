@@ -6,6 +6,7 @@
 #SBATCH --mem=16GB
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=ug-gpu-small
+#SBATCH --gres=gpu:ampere:1
 
 # Set environment
 set -e
