@@ -9,10 +9,6 @@
 #SBATCH --gres=gpu:1g.10gb:1
 
 
-# Run training with data directory argument
-# Default to ./data/out if not specified
-DATA_DIR="${1:-./data/}"
-
 echo "Starting HalfKP training job"
 echo "Data directory: $DATA_DIR"
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -20,6 +16,6 @@ echo "Time: $(date)"
 echo "Host: $(hostname)"
 echo "GPU: $(nvidia-smi -L)"
 
-python halfkp/train.py "$DATA_DIR"
+python halfkp/train.py 
 
 echo "Training job completed at $(date)"
