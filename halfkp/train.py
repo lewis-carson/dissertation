@@ -548,13 +548,13 @@ def main():
     
     val_dataset = ChessDataset(val_files, converter_path=converter_path, max_samples=VAL_SAMPLES)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False,
-                           collate_fn=collate_fn, num_workers=0)
+                           collate_fn=collate_fn, num_workers=NUM_WORKERS)
     
     # Create streaming training dataset (all files)
     print("\nCreating streaming training dataset...")
     train_dataset = StreamingChessDataset(binpack_paths, converter_path=converter_path, shuffle_files=True)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE,
-                             collate_fn=collate_fn, num_workers=0)
+                             collate_fn=collate_fn, num_workers=NUM_WORKERS)
     
     print(f"Validation set size: {len(val_dataset)}")
     
