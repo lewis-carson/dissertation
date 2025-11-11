@@ -668,6 +668,9 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=GAMMA)
     
+    print("[CHECKPOINT] Model and optimizer initialized")
+    sys.stdout.flush()
+    
     # Initialize wandb
     wandb.init(
         project="halfkp-chess",
@@ -700,6 +703,10 @@ def main():
         print(f"\n{'='*60}")
         print(f"Epoch {epoch+1}/{NUM_EPOCHS}")
         print(f"{'='*60}")
+        sys.stdout.flush()
+        
+        print(f"[CHECKPOINT] About to call train_epoch")
+        sys.stdout.flush()
         
         train_loss = train_epoch(
             model,
@@ -711,6 +718,9 @@ def main():
             NUM_EPOCHS,
             is_streaming=True,
         )
+        print(f"[CHECKPOINT] train_epoch returned, train_loss={train_loss:.6f}")
+        sys.stdout.flush()
+        
         val_loss = validate(
             model,
             val_loader,
@@ -719,8 +729,12 @@ def main():
             epoch,
             NUM_EPOCHS,
         )
+        print(f"[CHECKPOINT] validate returned, val_loss={val_loss:.6f}")
+        sys.stdout.flush()
         
         print(f"\nEpoch {epoch+1} Summary - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
+        sys.stdout.flush()
+
         
         current_lr = optimizer.param_groups[0]["lr"]
         epoch_progress = epoch / max(1, NUM_EPOCHS - 1)
