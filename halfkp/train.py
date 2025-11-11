@@ -121,7 +121,7 @@ class StreamingChessDataset(IterableDataset):
             raise ValueError("No binpack files provided for streaming dataset")
 
         print(f"Found {len(self.binpack_files)} binpack file(s) to process")
-
+        
     def __iter__(self):
         files_to_process = self.binpack_files.copy()
         if self.shuffle_files and len(files_to_process) > 1:
