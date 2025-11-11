@@ -628,7 +628,7 @@ def main():
     # Randomize file selection to avoid chronological bias
     binpack_paths_shuffled = binpack_paths.copy()
     np.random.shuffle(binpack_paths_shuffled)
-    val_files = binpack_paths_shuffled[:max(1, len(binpack_paths) // 20)]  # Use ~5% of files for validation
+    val_files = binpack_paths_shuffled[:1]
     print(f"Using {len(val_files)} randomly selected file(s) for validation set")
     
     val_dataset = ChessDataset(val_files, converter_path=converter_path, max_samples=VAL_SAMPLES)
