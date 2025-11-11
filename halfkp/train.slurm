@@ -6,7 +6,7 @@
 #SBATCH --mem=16GB
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=ug-gpu-small
-#SBATCH --gres=gpu:1g.10gb:2
+#SBATCH --gres=gpu:1g.10gb:1
 
 
 echo "Starting HalfKP training job"
