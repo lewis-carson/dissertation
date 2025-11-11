@@ -138,10 +138,19 @@ fn stream_binpack_file(input_file: &Path, progress: usize) -> Result<usize> {
     while reader.has_next() {
         let entry = reader.next();
 
-        let fen = entry.pos.fen()
+        let fen = entry
+            .pos
+            .fen()
             .map_err(|e| anyhow::anyhow!("Failed to generate FEN: {:?}", e))?;
 
-        if let Err(err) = writeln!(handle, "{}\t{}", fen, entry.score) {
+        if let Err(err) = writeln!(
+            handle,
+            "{}\t{}\t{}\t{}",
+            fen,
+            entry.score,
+            entry.ply,
+            entry.result as i16
+        ) {
             if err.kind() == io::ErrorKind::BrokenPipe {
                 return Ok(count);
             }

@@ -11,111 +11,99 @@ import wandb
 import sys
 import argparse
 import time
+from dataclasses import dataclass
 
 
-# HalfKP feature dimensions
-# 64 king squares * 10 piece types * 64 squares = 40960 features per side
-# We'll use a simpler encoding: king square (64) * piece-square (64 * 12 pieces)
-PIECE_TO_INDEX = {
-    chess.PAWN: 0,
-    chess.KNIGHT: 1,
-    chess.BISHOP: 2,
-    chess.ROOK: 3,
-    chess.QUEEN: 4,
-    chess.KING: 5,
-}
-
-# HalfKP: For each king position, encode all other pieces
-# Feature index = king_square * (64 * 10 piece types) + piece_square * 10 + piece_type
-# White pieces: 0-4, Black pieces: 5-9
-NUM_PIECE_TYPES = 10  # 5 piece types (P,N,B,R,Q) * 2 colors (excluding kings)
+# HalfKP feature dimensions (matching nnue-pytorch reference implementation)
 NUM_SQUARES = 64
-HALFKP_FEATURES = NUM_SQUARES * NUM_SQUARES * NUM_PIECE_TYPES  # 40960
+NUM_PIECE_TYPES = 10  # 5 piece types (P, N, B, R, Q) * 2 colours, kings excluded
+NUM_PLANES = NUM_SQUARES * NUM_PIECE_TYPES + 1  # extra plane for bias bucket
+HALFKP_FEATURES = NUM_PLANES * NUM_SQUARES  # 64 * (64 * 10 + 1) = 41_024
 
 
-def get_halfkp_features(board, perspective):
-    """
-    Extract HalfKP features for a given position from a perspective.
-    Returns a list of active feature indices.
-    """
-    features = []
-    
-    # Find the king square from perspective
+def orient(is_white_pov: bool, square: int) -> int:
+    """Mirror board for black perspective to share weights."""
+    return (63 * (not is_white_pov)) ^ square
+
+
+def halfkp_index(is_white_pov: bool, king_bucket: int, square: int, piece: chess.Piece) -> int:
+    """Compute HalfKP feature index, aligned with nnue-pytorch layout."""
+    piece_index = (piece.piece_type - 1) * 2 + int(piece.color != is_white_pov)
+    return 1 + orient(is_white_pov, square) + piece_index * NUM_SQUARES + king_bucket * NUM_PLANES
+
+
+@dataclass
+class LossParams:
+    in_offset: float = 270.0
+    out_offset: float = 270.0
+    in_scaling: float = 340.0
+    out_scaling: float = 380.0
+    start_lambda: float = 1.0
+    end_lambda: float = 1.0
+    pow_exp: float = 2.5
+    qp_asymmetry: float = 0.0
+
+
+def get_halfkp_features(board: chess.Board, perspective: chess.Color) -> list[int]:
+    """Return active HalfKP feature indices for the given perspective."""
+    indices: list[int] = []
+
     king_square = board.king(perspective)
     if king_square is None:
-        return features
-    
-    # Encode all pieces except the perspective's king
-    for square in chess.SQUARES:
-        piece = board.piece_at(square)
-        if piece is None:
-            continue
-        
-        # Skip the perspective's king
-        if piece.piece_type == chess.KING and piece.color == perspective:
-            continue
-        
-        # Calculate piece type index (0-9)
-        # White pieces: 0-4, Black pieces: 5-9
-        # NOTE: KING pieces are not included in HalfKP encoding (only the perspective king is used for bucketing)
+        return indices
+
+    king_bucket = orient(perspective == chess.WHITE, king_square)
+
+    for square, piece in board.piece_map().items():
         if piece.piece_type == chess.KING:
-            # Skip enemy king - HalfKP only uses the perspective king for feature bucketing
             continue
-        
-        base_idx = PIECE_TO_INDEX[piece.piece_type]
-        piece_idx = base_idx if piece.color == chess.WHITE else (base_idx + 5)
-        
-        # Calculate feature index
-        # feature = king_square * (64 * 10) + square * 10 + piece_idx
-        feature_idx = king_square * (NUM_SQUARES * NUM_PIECE_TYPES) + square * NUM_PIECE_TYPES + piece_idx
-        
-        # Sanity check
-        if feature_idx >= HALFKP_FEATURES:
-            continue
-            
-        features.append(feature_idx)
-    
-    return features
+        idx = halfkp_index(perspective == chess.WHITE, king_bucket, square, piece)
+        indices.append(idx)
+
+    return indices
 
 
 def process_position(row):
-    """Process a single position row and return features."""
+    """Process a single position row and return HalfKP feature data."""
     try:
-        board = chess.Board(row['fen'])
-        # Use score column - normalize it
-        raw_score = float(row['score'])
-        
-        # Handle edge cases and normalize score to [-1, 1] range
-        # Scores can range widely, so we use tanh to squash them
-        # Divide by a scaling factor to make the range reasonable
-        eval_score = np.tanh(raw_score / 1000.0)  # Scale by 1000
-        
-        # Clip to valid range
-        eval_score = np.clip(eval_score, -1.0, 1.0)
-        
-        # Get features for both sides
+        board = chess.Board(row["fen"])
+
+        raw_score = float(row["score"])
+        score_cp = raw_score if board.turn == chess.WHITE else -raw_score
+
+        result_raw = int(row.get("result", 0))
+        outcome = 1.0 if result_raw > 0 else 0.0 if result_raw < 0 else 0.5
+
+        ply = int(row.get("ply", 0))
+
         white_features = get_halfkp_features(board, chess.WHITE)
         black_features = get_halfkp_features(board, chess.BLACK)
-        
+
+        if not white_features:
+            white_features = [0]
+        if not black_features:
+            black_features = [0]
+
         return {
-            'white_features': white_features,
-            'black_features': black_features,
-            'eval': eval_score,
-            'stm': board.turn  # side to move
+            "white_features": white_features,
+            "black_features": black_features,
+            "score": score_cp,
+            "outcome": outcome,
+            "ply": ply,
         }
-    except Exception as e:
-        # Skip invalid positions
+    except Exception:
         return None
 
 
 class StreamingChessDataset(IterableDataset):
     """Streaming dataset that converts binpack files on the fly."""
 
-    def __init__(self, binpack_files, converter_path, shuffle_files=True):
+    def __init__(self, binpack_files, converter_path, shuffle_files=True, random_skip=1):
         super().__init__()
         self.shuffle_files = shuffle_files
         self.converter_path = Path(converter_path)
         self.binpack_files = [Path(path) for path in binpack_files]
+        self.random_skip = max(1, int(random_skip))
 
         if not self.binpack_files:
             raise ValueError("No binpack files provided for streaming dataset")
@@ -133,6 +121,9 @@ class StreamingChessDataset(IterableDataset):
 
             try:
                 for row in _stream_binpack_entries(binpack_file, self.converter_path):
+                    if self.random_skip > 1 and np.random.randint(self.random_skip) != 0:
+                        continue
+
                     result = process_position(row)
                     if result is not None:
                         yield result
@@ -277,14 +268,17 @@ def _stream_binpack_entries(binpack_file, converter_path):
             if not line:
                 continue
 
-            try:
-                fen, score_str = line.split("\t", 1)
-            except ValueError:
+            parts = line.split("\t")
+            if len(parts) < 4:
                 continue
+
+            fen, score_str, ply_str, result_str = parts[:4]
 
             yield {
                 "fen": fen,
                 "score": score_str,
+                "ply": ply_str,
+                "result": result_str,
             }
 
         return_code = process.wait()
@@ -303,81 +297,90 @@ def _stream_binpack_entries(binpack_file, converter_path):
 
 
 def collate_fn(batch):
-    """Custom collate function to create dense feature tensors."""
+    """Collate sparse HalfKP features into embedding-bag friendly format."""
     batch_size = len(batch)
-    
-    # Create feature lists
-    white_features_list = []
-    black_features_list = []
-    evals = []
-    
+
+    white_indices: list[int] = []
+    black_indices: list[int] = []
+    white_offsets: list[int] = []
+    black_offsets: list[int] = []
+    scores: list[float] = []
+    outcomes: list[float] = []
+
     for item in batch:
-        white_features_list.append(item['white_features'])
-        black_features_list.append(item['black_features'])
-        evals.append(item['eval'])
-    
-    # Convert to dense tensors (one-hot encoding)
-    white_dense = torch.zeros((batch_size, HALFKP_FEATURES))
-    black_dense = torch.zeros((batch_size, HALFKP_FEATURES))
-    
-    for i, (wf, bf) in enumerate(zip(white_features_list, black_features_list)):
-        if wf:
-            white_dense[i, wf] = 1.0
-        if bf:
-            black_dense[i, bf] = 1.0
-    
-    evals_tensor = torch.tensor(evals, dtype=torch.float32)
-    
-    return white_dense, black_dense, evals_tensor
+        white_offsets.append(len(white_indices))
+        black_offsets.append(len(black_indices))
+
+        white_indices.extend(item["white_features"] or [0])
+        black_indices.extend(item["black_features"] or [0])
+
+        scores.append(item["score"])
+        outcomes.append(item["outcome"])
+
+    if not white_indices:
+        white_indices = [0]
+    if not black_indices:
+        black_indices = [0]
+
+    white_indices_tensor = torch.tensor(white_indices, dtype=torch.long)
+    black_indices_tensor = torch.tensor(black_indices, dtype=torch.long)
+    white_offsets_tensor = torch.tensor(white_offsets, dtype=torch.long)
+    black_offsets_tensor = torch.tensor(black_offsets, dtype=torch.long)
+    score_tensor = torch.tensor(scores, dtype=torch.float32)
+    outcome_tensor = torch.tensor(outcomes, dtype=torch.float32)
+    return (
+        white_indices_tensor,
+        white_offsets_tensor,
+        black_indices_tensor,
+        black_offsets_tensor,
+        score_tensor,
+        outcome_tensor,
+    )
 
 
 class HalfKPNetwork(nn.Module):
-    """
-    HalfKP neural network architecture similar to NNUE.
-    Architecture: 40960x2 -> 256 -> 32 -> 32 -> 1
-    """
-    
-    def __init__(self, input_dim=HALFKP_FEATURES, hidden1=256, hidden2=32, hidden3=32):
-        super(HalfKPNetwork, self).__init__()
-        
-        # Feature transformer (separate for each side)
-        self.ft_white = nn.Linear(input_dim, hidden1)
-        self.ft_black = nn.Linear(input_dim, hidden1)
-        
-        # Hidden layers
+    """HalfKP neural network using embedding bags to mirror nnue-pytorch flow."""
+
+    def __init__(self, hidden1=256, hidden2=32, hidden3=32):
+        super().__init__()
+
+        num_embeddings = HALFKP_FEATURES + 1  # extra row for padding index 0
+
+        self.ft_white = nn.EmbeddingBag(num_embeddings, hidden1, mode="sum")
+        self.ft_black = nn.EmbeddingBag(num_embeddings, hidden1, mode="sum")
+
         self.fc1 = nn.Linear(hidden1 * 2, hidden2)
         self.fc2 = nn.Linear(hidden2, hidden3)
         self.fc3 = nn.Linear(hidden3, 1)
-        
-        # Use ClippedReLU (ReLU with clipping) as in NNUE
+
         self.activation = nn.ReLU()
-        
-        # Initialize weights with small values to prevent explosion
+
         self._initialize_weights()
-        
+
     def _initialize_weights(self):
-        """Initialize weights with small values for numerical stability."""
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight, gain=0.01)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-        
-    def forward(self, white_features, black_features):
-        # Feature transformation
-        white_transformed = self.activation(self.ft_white(white_features))
-        black_transformed = self.activation(self.ft_black(black_features))
-        
-        # Concatenate both perspectives
+        for module in self.modules():
+            if isinstance(module, nn.EmbeddingBag):
+                nn.init.xavier_uniform_(module.weight, gain=0.01)
+                with torch.no_grad():
+                    module.weight[0].zero_()
+            elif isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight, gain=0.01)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0.0)
+
+    def forward(self, white_indices, white_offsets, black_indices, black_offsets):
+        white_transformed = self.activation(
+            self.ft_white(white_indices, white_offsets)
+        )
+        black_transformed = self.activation(
+            self.ft_black(black_indices, black_offsets)
+        )
+
         x = torch.cat([white_transformed, black_transformed], dim=1)
-        
-        # Hidden layers with ReLU activation
         x = self.activation(self.fc1(x))
         x = self.activation(self.fc2(x))
-        
-        # Output layer with tanh to bound output
-        x = torch.tanh(self.fc3(x))
-        
+        x = self.fc3(x)
+
         return x.squeeze(-1)
 
 
@@ -392,90 +395,169 @@ def normalize_eval(eval_score):
     return eval_score
 
 
-def train_epoch(model, dataloader, optimizer, criterion, device, is_streaming=False):
-    """Train for one epoch."""
+def compute_loss(predictions, scores, outcomes, loss_params: LossParams, epoch_progress: float):
+    """Recreate nnue-pytorch blended loss between search scores and game outcomes."""
+    p = loss_params
+
+    scorenet = predictions
+
+    q = (scorenet - p.in_offset) / p.in_scaling
+    qm = (-scorenet - p.in_offset) / p.in_scaling
+    qf = 0.5 * (1.0 + torch.sigmoid(q) - torch.sigmoid(qm))
+
+    s = (scores - p.out_offset) / p.out_scaling
+    sm = (-scores - p.out_offset) / p.out_scaling
+    pf = 0.5 * (1.0 + torch.sigmoid(s) - torch.sigmoid(sm))
+
+    actual_lambda = p.start_lambda + (p.end_lambda - p.start_lambda) * epoch_progress
+    pt = pf * actual_lambda + outcomes * (1.0 - actual_lambda)
+
+    loss = torch.pow(torch.abs(pt - qf), p.pow_exp)
+
+    if p.qp_asymmetry != 0.0:
+        loss = loss * ((qf > pt).float() * p.qp_asymmetry + 1.0)
+
+    return loss.mean()
+
+
+def train_epoch(
+    model,
+    dataloader,
+    optimizer,
+    loss_params: LossParams,
+    device,
+    epoch_idx: int,
+    total_epochs: int,
+    is_streaming: bool = False,
+):
+    """Train for one epoch using nnue-pytorch style blended loss."""
+
     model.train()
     total_loss = 0.0
     num_batches = 0
     epoch_start_time = time.time()
     batch_times = []
-    
-    for batch_idx, (white_feat, black_feat, evals) in enumerate(dataloader):
+
+    epoch_progress = epoch_idx / max(1, total_epochs - 1)
+
+    for batch_idx, batch in enumerate(dataloader):
+        (
+            white_indices,
+            white_offsets,
+            black_indices,
+            black_offsets,
+            scores,
+            outcomes,
+        ) = batch
+
         batch_start_time = time.time()
-        
-        white_feat = white_feat.to(device)
-        black_feat = black_feat.to(device)
-        evals = evals.to(device)
-        
-        # Forward pass
+
+        white_indices = white_indices.to(device)
+        white_offsets = white_offsets.to(device)
+        black_indices = black_indices.to(device)
+        black_offsets = black_offsets.to(device)
+        scores = scores.to(device)
+        outcomes = outcomes.to(device)
+
         optimizer.zero_grad()
-        predictions = model(white_feat, black_feat)
-        
-        # Compute loss
-        loss = criterion(predictions, evals)
-        
-        # Check for NaN/inf
+        predictions = model(white_indices, white_offsets, black_indices, black_offsets)
+
+        loss = compute_loss(predictions, scores, outcomes, loss_params, epoch_progress)
+
         if not torch.isfinite(loss):
             print(f"  Warning: Non-finite loss at batch {batch_idx}, skipping...")
+            optimizer.zero_grad()
             continue
-        
-        # Backward pass
+
         loss.backward()
-        
-        # Gradient clipping to prevent explosion
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        
         optimizer.step()
-        
+
         total_loss += loss.item()
         num_batches += 1
-        
-        # Calculate batch timing metrics
+
         batch_time = time.time() - batch_start_time
         batch_times.append(batch_time)
-        batch_size = white_feat.size(0)
+        batch_size = outcomes.size(0)
         samples_per_sec = batch_size / batch_time if batch_time > 0 else 0
-        
-        # Log batch loss and timing to wandb
-        wandb.log({
-            "batch_loss": loss.item(),
-            "batch": batch_idx,
-            "batch_time_sec": batch_time,
-            "samples_per_sec": samples_per_sec,
-        })
-        
+
+        wandb.log(
+            {
+                "batch_loss": loss.item(),
+                "batch": batch_idx,
+                "batch_time_sec": batch_time,
+                "samples_per_sec": samples_per_sec,
+            }
+        )
+
         if batch_idx % 500 == 0:
             avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
-            avg_batch_time = np.mean(batch_times[-100:]) if batch_times else 0  # Last 100 batches
+            avg_batch_time = np.mean(batch_times[-100:]) if batch_times else 0.0
             if is_streaming:
-                print(f"  Batch {batch_idx}, Avg Loss: {avg_loss:.6f}, Current Loss: {loss.item():.6f}, "
-                      f"Batch Time: {batch_time:.3f}s, Samples/sec: {samples_per_sec:.0f}")
+                print(
+                    "  Batch {:d}, Avg Loss: {:.6f}, Current Loss: {:.6f}, Batch Time: {:.3f}s, Samples/sec: {:.0f}".format(
+                        batch_idx,
+                        avg_loss,
+                        loss.item(),
+                        batch_time,
+                        samples_per_sec,
+                    )
+                )
             else:
-                print(f"  Batch {batch_idx}/{len(dataloader)}, Loss: {loss.item():.6f}, "
-                      f"Batch Time: {batch_time:.3f}s, Samples/sec: {samples_per_sec:.0f}")
-    
+                print(
+                    "  Batch {}/{} Loss: {:.6f}, Batch Time: {:.3f}s, Samples/sec: {:.0f}".format(
+                        batch_idx,
+                        len(dataloader),
+                        loss.item(),
+                        batch_time,
+                        samples_per_sec,
+                    )
+                )
+
+    epoch_duration = time.time() - epoch_start_time
+    wandb.log({"epoch_time_sec": epoch_duration})
+
     return total_loss / num_batches if num_batches > 0 else 0.0
 
 
-def validate(model, dataloader, criterion, device):
-    """Validate the model."""
+def validate(model, dataloader, loss_params: LossParams, device, epoch_idx: int, total_epochs: int):
+    """Validate the model using the same blended loss as training."""
+
     model.eval()
     total_loss = 0.0
     num_batches = 0
-    
+    epoch_progress = epoch_idx / max(1, total_epochs - 1)
+
     with torch.no_grad():
-        for white_feat, black_feat, evals in dataloader:
-            white_feat = white_feat.to(device)
-            black_feat = black_feat.to(device)
-            evals = evals.to(device)
-            
-            predictions = model(white_feat, black_feat)
-            loss = criterion(predictions, evals)
-            
+        for batch in dataloader:
+            (
+                white_indices,
+                white_offsets,
+                black_indices,
+                black_offsets,
+                scores,
+                outcomes,
+            ) = batch
+
+            white_indices = white_indices.to(device)
+            white_offsets = white_offsets.to(device)
+            black_indices = black_indices.to(device)
+            black_offsets = black_offsets.to(device)
+            scores = scores.to(device)
+            outcomes = outcomes.to(device)
+
+            predictions = model(
+                white_indices,
+                white_offsets,
+                black_indices,
+                black_offsets,
+            )
+            loss = compute_loss(predictions, scores, outcomes, loss_params, epoch_progress)
+
             total_loss += loss.item()
             num_batches += 1
-    
-    return total_loss / num_batches
+
+    return total_loss / num_batches if num_batches > 0 else 0.0
 
 
 def main():
@@ -487,11 +569,11 @@ def main():
     args = parser.parse_args()
     
     # Hyperparameters
-    BATCH_SIZE = 16384  # Full tensor dimension - A100 can handle this easily
+    BATCH_SIZE = 8192
     LEARNING_RATE = 8.75e-4
     NUM_EPOCHS = 600
     GAMMA = 0.992
-    NUM_WORKERS = 4
+    NUM_WORKERS = 0
     THREADS = 2
     NETWORK_SAVE_PERIOD = 10
     VALIDATION_SIZE = 1000000
@@ -513,6 +595,9 @@ def main():
         device = torch.device('cpu')
         print(f"Using device: CPU")
     print(f"Device: {device}")
+
+    if THREADS > 0:
+        torch.set_num_threads(THREADS)
     
     # Data directory - use argument or default
     if args.data_dir:
@@ -547,24 +632,41 @@ def main():
     print(f"Using {len(val_files)} randomly selected file(s) for validation set")
     
     val_dataset = ChessDataset(val_files, converter_path=converter_path, max_samples=VAL_SAMPLES)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False,
-                           collate_fn=collate_fn, num_workers=NUM_WORKERS)
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        collate_fn=collate_fn,
+        num_workers=NUM_WORKERS,
+        pin_memory=torch.cuda.is_available() or torch.backends.mps.is_available(),
+    )
     
     # Create streaming training dataset (all files)
     print("\nCreating streaming training dataset...")
-    train_dataset = StreamingChessDataset(binpack_paths, converter_path=converter_path, shuffle_files=True)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE,
-                             collate_fn=collate_fn, num_workers=NUM_WORKERS)
+    train_dataset = StreamingChessDataset(
+        binpack_paths,
+        converter_path=converter_path,
+        shuffle_files=True,
+        random_skip=RANDOM_FEN_SKIPPING,
+    )
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        collate_fn=collate_fn,
+        num_workers=NUM_WORKERS,
+        pin_memory=torch.cuda.is_available() or torch.backends.mps.is_available(),
+    )
     
     print(f"Validation set size: {len(val_dataset)}")
     
     # Initialize model
     model = HalfKPNetwork().to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
-    
-    # Loss and optimizer
-    criterion = nn.MSELoss()
+
+    loss_params = LossParams(start_lambda=START_LAMBDA, end_lambda=END_LAMBDA)
+
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=GAMMA)
     
     # Initialize wandb
     wandb.init(
@@ -599,16 +701,42 @@ def main():
         print(f"Epoch {epoch+1}/{NUM_EPOCHS}")
         print(f"{'='*60}")
         
-        train_loss = train_epoch(model, train_loader, optimizer, criterion, device, is_streaming=True)
-        val_loss = validate(model, val_loader, criterion, device)
+        train_loss = train_epoch(
+            model,
+            train_loader,
+            optimizer,
+            loss_params,
+            device,
+            epoch,
+            NUM_EPOCHS,
+            is_streaming=True,
+        )
+        val_loss = validate(
+            model,
+            val_loader,
+            loss_params,
+            device,
+            epoch,
+            NUM_EPOCHS,
+        )
         
         print(f"\nEpoch {epoch+1} Summary - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
         
-        wandb.log({
-            "epoch": epoch + 1,
-            "train_loss": train_loss,
-            "val_loss": val_loss,
-        })
+        current_lr = optimizer.param_groups[0]["lr"]
+        epoch_progress = epoch / max(1, NUM_EPOCHS - 1)
+        current_lambda = loss_params.start_lambda + (loss_params.end_lambda - loss_params.start_lambda) * epoch_progress
+
+        wandb.log(
+            {
+                "epoch": epoch + 1,
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "learning_rate": current_lr,
+                "lambda": current_lambda,
+            }
+        )
+
+        scheduler.step()
         
         # Save checkpoint
         if (epoch + 1) % 5 == 0:
