@@ -487,7 +487,7 @@ def main():
     args = parser.parse_args()
     
     # Hyperparameters
-    BATCH_SIZE = 16384 // 64
+    BATCH_SIZE = 16384  # Full tensor dimension - A100 can handle this easily
     LEARNING_RATE = 8.75e-4
     NUM_EPOCHS = 600
     GAMMA = 0.992
