@@ -1,17 +1,22 @@
+import argparse
+import ctypes
+import math
+import os
+import queue
+import sys
+import threading
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Tuple
+
+import chess
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader, IterableDataset
-import chess
-import numpy as np
-from pathlib import Path
-import shutil
-import subprocess
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 import wandb
-import sys
-import argparse
-import time
-from dataclasses import dataclass
 
 
 # HalfKP feature dimensions (matching nnue-pytorch reference implementation)
@@ -32,6 +37,92 @@ def halfkp_index(is_white_pov: bool, king_bucket: int, square: int, piece: chess
     return 1 + orient(is_white_pov, square) + piece_index * NUM_SQUARES + king_bucket * NUM_PLANES
 
 
+LIB_CANDIDATES = [
+    "training_data_loader.dylib",
+    "training_data_loader.so",
+    "training_data_loader.dll",
+]
+
+
+@dataclass
+class DataloaderSkipConfig:
+    filtered: bool = False
+    random_fen_skipping: int = 0
+    wld_filtered: bool = False
+    early_fen_skipping: int = -1
+    simple_eval_skipping: int = -1
+    param_index: int = 0
+
+
+class CDataloaderSkipConfig(ctypes.Structure):
+    _fields_ = [
+        ("filtered", ctypes.c_bool),
+        ("random_fen_skipping", ctypes.c_int),
+        ("wld_filtered", ctypes.c_bool),
+        ("early_fen_skipping", ctypes.c_int),
+        ("simple_eval_skipping", ctypes.c_int),
+        ("param_index", ctypes.c_int),
+    ]
+
+    def __init__(self, config: DataloaderSkipConfig):
+        super().__init__(
+            filtered=config.filtered,
+            random_fen_skipping=config.random_fen_skipping,
+            wld_filtered=config.wld_filtered,
+            early_fen_skipping=config.early_fen_skipping,
+            simple_eval_skipping=config.simple_eval_skipping,
+            param_index=config.param_index,
+        )
+
+
+def _load_training_library():
+    base_dir = Path(__file__).resolve().parent
+    for candidate_name in LIB_CANDIDATES:
+        candidate_path = base_dir / candidate_name
+        if candidate_path.exists():
+            return ctypes.cdll.LoadLibrary(str(candidate_path))
+    raise FileNotFoundError(
+        f"training_data_loader library not found next to {__file__}. Expected one of: {', '.join(LIB_CANDIDATES)}"
+    )
+
+
+def _init_training_library():
+    library = _load_training_library()
+
+    library.create_sparse_batch_stream.restype = ctypes.c_void_p
+    library.create_sparse_batch_stream.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_char_p),
+        ctypes.c_int,
+        ctypes.c_bool,
+        CDataloaderSkipConfig,
+    ]
+
+    library.destroy_sparse_batch_stream.argtypes = [ctypes.c_void_p]
+
+    library.fetch_next_sparse_batch.restype = ctypes.c_void_p
+    library.fetch_next_sparse_batch.argtypes = [ctypes.c_void_p]
+
+    library.destroy_sparse_batch.argtypes = [ctypes.c_void_p]
+
+    library.get_sparse_batch_from_fens.restype = ctypes.c_void_p
+    library.get_sparse_batch_from_fens.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_char_p),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+    ]
+
+    return library
+
+
+TRAINING_LIB = _init_training_library()
+
+
 @dataclass
 class LossParams:
     in_offset: float = 270.0
@@ -44,131 +135,351 @@ class LossParams:
     qp_asymmetry: float = 0.0
 
 
-def get_halfkp_features(board: chess.Board, perspective: chess.Color) -> list[int]:
-    """Return active HalfKP feature indices for the given perspective."""
-    indices: list[int] = []
+class SparseBatch(ctypes.Structure):
+    _fields_ = [
+        ("num_inputs", ctypes.c_int),
+        ("size", ctypes.c_int),
+        ("is_white", ctypes.POINTER(ctypes.c_float)),
+        ("outcome", ctypes.POINTER(ctypes.c_float)),
+        ("score", ctypes.POINTER(ctypes.c_float)),
+        ("num_active_white_features", ctypes.c_int),
+        ("num_active_black_features", ctypes.c_int),
+        ("max_active_features", ctypes.c_int),
+        ("white", ctypes.POINTER(ctypes.c_int)),
+        ("black", ctypes.POINTER(ctypes.c_int)),
+        ("white_values", ctypes.POINTER(ctypes.c_float)),
+        ("black_values", ctypes.POINTER(ctypes.c_float)),
+        ("psqt_indices", ctypes.POINTER(ctypes.c_int)),
+        ("layer_stack_indices", ctypes.POINTER(ctypes.c_int)),
+    ]
 
-    king_square = board.king(perspective)
-    if king_square is None:
-        return indices
+    def get_tensors(self, device: torch.device):
+        def _move(tensor: torch.Tensor) -> torch.Tensor:
+            if device.type == "cuda":
+                return tensor.pin_memory().to(device=device, non_blocking=True)
+            if device.type == "cpu":
+                return tensor.clone()
+            return tensor.to(device=device)
 
-    king_bucket = orient(perspective == chess.WHITE, king_square)
+        white_values = _move(
+            torch.from_numpy(
+                np.ctypeslib.as_array(
+                    self.white_values, shape=(self.size, self.max_active_features)
+                )
+            )
+        )
+        black_values = _move(
+            torch.from_numpy(
+                np.ctypeslib.as_array(
+                    self.black_values, shape=(self.size, self.max_active_features)
+                )
+            )
+        )
+        white_indices = _move(
+            torch.from_numpy(
+                np.ctypeslib.as_array(
+                    self.white, shape=(self.size, self.max_active_features)
+                )
+            ).to(dtype=torch.long, copy=True)
+        )
+        black_indices = _move(
+            torch.from_numpy(
+                np.ctypeslib.as_array(
+                    self.black, shape=(self.size, self.max_active_features)
+                )
+            ).to(dtype=torch.long, copy=True)
+        )
+        us = _move(
+            torch.from_numpy(
+                np.ctypeslib.as_array(self.is_white, shape=(self.size, 1))
+            )
+        )
+        them = 1.0 - us
+        outcome = _move(
+            torch.from_numpy(
+                np.ctypeslib.as_array(self.outcome, shape=(self.size, 1))
+            )
+        )
+        score = _move(
+            torch.from_numpy(
+                np.ctypeslib.as_array(self.score, shape=(self.size, 1))
+            )
+        )
+        psqt_indices = _move(
+            torch.from_numpy(
+                np.ctypeslib.as_array(self.psqt_indices, shape=(self.size,))
+            ).to(dtype=torch.long, copy=True)
+        )
+        layer_stack_indices = _move(
+            torch.from_numpy(
+                np.ctypeslib.as_array(self.layer_stack_indices, shape=(self.size,))
+            ).to(dtype=torch.long, copy=True)
+        )
+        return (
+            us,
+            them,
+            white_indices,
+            white_values,
+            black_indices,
+            black_values,
+            outcome,
+            score,
+            psqt_indices,
+            layer_stack_indices,
+        )
 
-    for square, piece in board.piece_map().items():
-        if piece.piece_type == chess.KING:
-            continue
-        idx = halfkp_index(perspective == chess.WHITE, king_bucket, square, piece)
-        indices.append(idx)
 
-    return indices
+def _to_c_str_array(items):
+    arr = (ctypes.c_char_p * len(items))()
+    arr[:] = [s.encode("utf-8") for s in items]
+    return arr
 
 
-def process_position(row):
-    """Process a single position row and return HalfKP feature data."""
-    try:
-        board = chess.Board(row["fen"])
+def create_sparse_batch_stream(
+    feature_set: str,
+    concurrency: int,
+    filenames,
+    batch_size: int,
+    cyclic: bool,
+    config: DataloaderSkipConfig,
+):
+    if len(filenames) == 0:
+        raise ValueError("No binpack files provided to sparse loader")
+    filenames_bytes = _to_c_str_array(filenames)
+    return TRAINING_LIB.create_sparse_batch_stream(
+        feature_set.encode("utf-8"),
+        max(1, concurrency),
+        len(filenames),
+        filenames_bytes,
+        batch_size,
+        bool(cyclic),
+        CDataloaderSkipConfig(config),
+    )
 
-        raw_score = float(row["score"])
-        score_cp = raw_score if board.turn == chess.WHITE else -raw_score
 
-        result_raw = int(row.get("result", 0))
-        outcome = 1.0 if result_raw > 0 else 0.0 if result_raw < 0 else 0.5
-
-        ply = int(row.get("ply", 0))
-
-        white_features = get_halfkp_features(board, chess.WHITE)
-        black_features = get_halfkp_features(board, chess.BLACK)
-
-        if not white_features:
-            white_features = [0]
-        if not black_features:
-            black_features = [0]
-
-        return {
-            "white_features": white_features,
-            "black_features": black_features,
-            "score": score_cp,
-            "outcome": outcome,
-            "ply": ply,
-        }
-    except Exception:
+def fetch_next_sparse_batch(stream_handle):
+    raw_ptr = TRAINING_LIB.fetch_next_sparse_batch(stream_handle)
+    if not raw_ptr:
         return None
+    return ctypes.cast(raw_ptr, ctypes.POINTER(SparseBatch))
 
 
-class StreamingChessDataset(IterableDataset):
-    """Streaming dataset that converts binpack files on the fly."""
+def destroy_sparse_batch(batch_handle):
+    TRAINING_LIB.destroy_sparse_batch(batch_handle)
 
-    def __init__(self, binpack_files, converter_path, shuffle_files=True, random_skip=1):
+
+def destroy_sparse_batch_stream(stream_handle):
+    TRAINING_LIB.destroy_sparse_batch_stream(stream_handle)
+
+
+class SparseBatchIterableDataset(IterableDataset):
+    def __init__(
+        self,
+        feature_set: str,
+        filenames,
+        batch_size: int,
+        skip_config: DataloaderSkipConfig,
+        cyclic: bool,
+        num_workers: int,
+    ):
         super().__init__()
-        self.shuffle_files = shuffle_files
-        self.converter_path = Path(converter_path)
-        self.binpack_files = [Path(path) for path in binpack_files]
-        self.random_skip = max(1, int(random_skip))
+        self.feature_set = feature_set
+        self.filenames = list(filenames)
+        self.batch_size = batch_size
+        self.skip_config = skip_config
+        self.cyclic = cyclic
+        self.num_workers = num_workers
 
-        if not self.binpack_files:
-            raise ValueError("No binpack files provided for streaming dataset")
-
-        print(f"Found {len(self.binpack_files)} binpack file(s) to process")
-        
     def __iter__(self):
-        files_to_process = self.binpack_files.copy()
-        if self.shuffle_files and len(files_to_process) > 1:
-            np.random.shuffle(files_to_process)
+        stream = create_sparse_batch_stream(
+            self.feature_set,
+            self.num_workers,
+            self.filenames,
+            self.batch_size,
+            self.cyclic,
+            self.skip_config,
+        )
+        device = torch.device("cpu")
+        try:
+            while True:
+                batch_ptr = fetch_next_sparse_batch(stream)
+                if batch_ptr is None:
+                    break
+                tensors = batch_ptr.contents.get_tensors(device)
+                destroy_sparse_batch(batch_ptr)
+                yield tensors
+        finally:
+            destroy_sparse_batch_stream(stream)
 
-        for file_idx, binpack_file in enumerate(files_to_process):
-            if file_idx % 10 == 0:
-                print(f"Processing file {file_idx + 1}/{len(files_to_process)}: {binpack_file.name}")
 
-            try:
-                for row in _stream_binpack_entries(binpack_file, self.converter_path):
-                    if self.random_skip > 1 and np.random.randint(self.random_skip) != 0:
-                        continue
+class FixedNumBatchesDataset(Dataset):
+    def __init__(self, dataset, num_batches):
+        super().__init__()
+        self.dataset = dataset
+        self.iter = iter(self.dataset)
+        self.num_batches = num_batches
 
-                    result = process_position(row)
-                    if result is not None:
-                        yield result
-            except Exception as exc:
-                print(f"Error processing {binpack_file}: {exc}")
-                continue
+        self._prefetch_queue = queue.Queue(maxsize=100)
+        self._prefetch_thread = None
+        self._stop_prefetching = threading.Event()
+        self._prefetch_started = False
+        self._lock = threading.Lock()
 
+    def _prefetch_worker(self):
+        try:
+            while not self._stop_prefetching.is_set():
+                try:
+                    item = next(self.iter)
+                    self._prefetch_queue.put(item)
+                except StopIteration:
+                    self._prefetch_queue.put(None)
+                    break
+                except queue.Full:
+                    continue
+        except Exception as exc:
+            self._prefetch_queue.put(exc)
 
-class ChessDataset(Dataset):
-    """In-memory dataset for validation set (smaller subset)."""
-
-    def __init__(self, binpack_files, converter_path, max_samples=10000):
-        self.data = []
-        converter_path = Path(converter_path)
-        binpack_files = [Path(path) for path in binpack_files]
-
-        print(f"Loading validation data from {len(binpack_files)} file(s)...")
-
-        total_loaded = 0
-        for binpack_file in binpack_files:
-            if total_loaded >= max_samples:
-                break
-
-            try:
-                for row in _stream_binpack_entries(binpack_file, converter_path):
-                    if total_loaded >= max_samples:
-                        break
-
-                    result = process_position(row)
-                    if result is not None:
-                        self.data.append(result)
-                        total_loaded += 1
-            except Exception as exc:
-                print(f"Error processing {binpack_file}: {exc}")
-                continue
-
-        print(f"Successfully loaded {len(self.data)} validation positions")
+    def _start_prefetching(self):
+        with self._lock:
+            if not self._prefetch_started:
+                self._prefetch_thread = threading.Thread(
+                    target=self._prefetch_worker,
+                    daemon=True,
+                )
+                self._prefetch_thread.start()
+                self._prefetch_started = True
 
     def __len__(self):
-        return len(self.data)
+        return self.num_batches
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        self._start_prefetching()
+
+        try:
+            item = self._prefetch_queue.get(timeout=300.0)
+            if item is None:
+                raise StopIteration("End of dataset reached")
+            if isinstance(item, Exception):
+                raise item
+            return item
+        except queue.Empty as exc:
+            raise RuntimeError("Prefetch timeout - no data available") from exc
+
+    def __del__(self):
+        if hasattr(self, "_stop_prefetching"):
+            self._stop_prefetching.set()
+        if hasattr(self, "_prefetch_thread") and self._prefetch_thread:
+            self._prefetch_thread.join(timeout=1.0)
 
 
+@dataclass
+class PreparedBatch:
+    white_indices: torch.Tensor
+    white_offsets: torch.Tensor
+    white_weights: torch.Tensor
+    black_indices: torch.Tensor
+    black_offsets: torch.Tensor
+    black_weights: torch.Tensor
+    scores: torch.Tensor
+    outcomes: torch.Tensor
+    size: int
+
+
+def _flatten_sparse(
+    indices: torch.Tensor, values: torch.Tensor, device: torch.device
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Convert fixed-width sparse arrays into flattened indices/weights plus offsets."""
+
+    indices = indices.to(dtype=torch.long, copy=True)
+    values = values.to(dtype=torch.float32, copy=True)
+
+    mask = values != 0
+    lengths = mask.sum(dim=1, dtype=torch.long)
+    flat_indices = indices[mask]
+    flat_weights = values[mask]
+
+    batch_size = indices.size(0)
+    total_active = lengths.sum().item()
+
+    if total_active == 0:
+        flat_indices = torch.zeros(1, dtype=torch.long)
+        flat_weights = torch.zeros(1, dtype=torch.float32)
+        lengths = torch.zeros(batch_size, dtype=torch.long)
+        if batch_size > 0:
+            lengths[0] = 1
+
+    offsets = torch.zeros(batch_size, dtype=torch.long)
+    if batch_size > 1:
+        offsets[1:] = torch.cumsum(lengths[:-1], dim=0)
+
+    return (
+        flat_indices.to(device=device, non_blocking=True),
+        offsets.to(device=device, non_blocking=True),
+        flat_weights.to(device=device, non_blocking=True),
+    )
+
+
+def prepare_sparse_batch(batch, device: torch.device) -> PreparedBatch:
+    """Transform a SparseBatch tuple into embedding-bag friendly tensors."""
+
+    (
+        _us,
+        _them,
+        white_indices,
+        white_values,
+        black_indices,
+        black_values,
+        outcome,
+        score,
+        _psqt_indices,
+        _layer_stack_indices,
+    ) = batch
+
+    white_idx, white_off, white_w = _flatten_sparse(white_indices, white_values, device)
+    black_idx, black_off, black_w = _flatten_sparse(black_indices, black_values, device)
+
+    scores = score.view(-1).to(device=device, dtype=torch.float32, non_blocking=True)
+    outcomes = outcome.view(-1).to(device=device, dtype=torch.float32, non_blocking=True)
+
+    batch_size = white_indices.size(0)
+
+    return PreparedBatch(
+        white_indices=white_idx,
+        white_offsets=white_off,
+        white_weights=white_w,
+        black_indices=black_idx,
+        black_offsets=black_off,
+        black_weights=black_w,
+        scores=scores,
+        outcomes=outcomes,
+        size=batch_size,
+    )
+
+
+def create_sparse_dataloader(
+    binpack_files,
+    batch_size: int,
+    positions_per_epoch: int,
+    skip_config: DataloaderSkipConfig,
+    num_workers: int = 0,
+    cyclic: bool = True,
+):
+    """Build a DataLoader backed by the nnue-pytorch C++ sparse pipeline."""
+
+    files = [str(Path(path)) for path in binpack_files]
+    dataset = SparseBatchIterableDataset(
+        "HalfKP",
+        files,
+        batch_size,
+        skip_config=skip_config,
+        cyclic=cyclic,
+        num_workers=num_workers,
+    )
+
+    num_batches = max(1, math.ceil(positions_per_epoch / batch_size))
+    fixed_dataset = FixedNumBatchesDataset(dataset, num_batches)
+
+    return DataLoader(fixed_dataset, batch_size=None)
 def _gather_paths(base_dir, patterns):
     """Collect files in base_dir matching patterns recursively."""
     collected = []
@@ -179,164 +490,13 @@ def _gather_paths(base_dir, patterns):
     seen = set()
     for path in collected:
         resolved = path.resolve()
-        if resolved not in seen:
-            seen.add(resolved)
-            unique.append(path)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(path)
 
     unique.sort()
     return unique
-
-
-def _locate_binpack_reader(executable_hint=None):
-    """Find the compiled binpack-reader binary, building it if needed."""
-    if executable_hint:
-        candidate = Path(executable_hint)
-        if candidate.exists() and candidate.is_file():
-            return candidate
-
-    repo_root = Path(__file__).parent.parent
-    project_root = repo_root / "binpack-reader"
-    candidates = [
-        project_root / "target" / "release" / "binpack-reader",
-        project_root / "target" / "debug" / "binpack-reader",
-    ]
-
-    for candidate in candidates:
-        if candidate.exists() and candidate.is_file():
-            return candidate
-
-    cargo = shutil.which("cargo")
-    if cargo is None:
-        return None
-
-    print("binpack-reader binary not found, building with cargo...")
-    try:
-        subprocess.run(
-            [cargo, "build", "--release"],
-            cwd=project_root,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-    except subprocess.CalledProcessError as exc:
-        stderr = exc.stderr.decode("utf-8", errors="ignore") if exc.stderr else ""
-        print("Failed to build binpack-reader with cargo.")
-        if stderr:
-            print(stderr.strip())
-        return None
-
-    built_candidate = project_root / "target" / "release" / "binpack-reader"
-    if built_candidate.exists() and built_candidate.is_file():
-        return built_candidate
-
-    print("binpack-reader build completed but executable not found.")
-    return None
-
-
-def _stream_binpack_entries(binpack_file, converter_path):
-    """Stream positions from a binpack file using the helper binary."""
-    binpack_file = Path(binpack_file)
-    converter_path = Path(converter_path)
-
-    if not binpack_file.exists():
-        raise FileNotFoundError(f"Binpack file not found: {binpack_file}")
-
-    cmd = [
-        str(converter_path),
-        str(binpack_file.parent),
-        str(binpack_file.parent),
-        "--stdout",
-        "--single-file",
-        str(binpack_file),
-    ]
-
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-    )
-
-    if process.stdout is None:
-        process.kill()
-        raise RuntimeError("Failed to open pipe to binpack-reader stdout")
-
-    return_code = None
-    try:
-        for raw_line in process.stdout:
-            line = raw_line.strip()
-            if not line:
-                continue
-
-            parts = line.split("\t")
-            if len(parts) < 4:
-                continue
-
-            fen, score_str, ply_str, result_str = parts[:4]
-
-            yield {
-                "fen": fen,
-                "score": score_str,
-                "ply": ply_str,
-                "result": result_str,
-            }
-
-        return_code = process.wait()
-    finally:
-        stdout_stream = process.stdout
-        if stdout_stream is not None:
-            stdout_stream.close()
-
-        if process.poll() is None:
-            process.kill()
-            process.wait()
-        elif return_code not in (None, 0):
-            raise RuntimeError(
-                f"binpack-reader exited with status {return_code} while processing {binpack_file}"
-            )
-
-
-def collate_fn(batch):
-    """Collate sparse HalfKP features into embedding-bag friendly format."""
-    batch_size = len(batch)
-
-    white_indices: list[int] = []
-    black_indices: list[int] = []
-    white_offsets: list[int] = []
-    black_offsets: list[int] = []
-    scores: list[float] = []
-    outcomes: list[float] = []
-
-    for item in batch:
-        white_offsets.append(len(white_indices))
-        black_offsets.append(len(black_indices))
-
-        white_indices.extend(item["white_features"] or [0])
-        black_indices.extend(item["black_features"] or [0])
-
-        scores.append(item["score"])
-        outcomes.append(item["outcome"])
-
-    if not white_indices:
-        white_indices = [0]
-    if not black_indices:
-        black_indices = [0]
-
-    white_indices_tensor = torch.tensor(white_indices, dtype=torch.long)
-    black_indices_tensor = torch.tensor(black_indices, dtype=torch.long)
-    white_offsets_tensor = torch.tensor(white_offsets, dtype=torch.long)
-    black_offsets_tensor = torch.tensor(black_offsets, dtype=torch.long)
-    score_tensor = torch.tensor(scores, dtype=torch.float32)
-    outcome_tensor = torch.tensor(outcomes, dtype=torch.float32)
-    return (
-        white_indices_tensor,
-        white_offsets_tensor,
-        black_indices_tensor,
-        black_offsets_tensor,
-        score_tensor,
-        outcome_tensor,
-    )
-
 
 class HalfKPNetwork(nn.Module):
     """HalfKP neural network using embedding bags to mirror nnue-pytorch flow."""
@@ -368,12 +528,20 @@ class HalfKPNetwork(nn.Module):
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0.0)
 
-    def forward(self, white_indices, white_offsets, black_indices, black_offsets):
+    def forward(
+        self,
+        white_indices,
+        white_offsets,
+        black_indices,
+        black_offsets,
+        white_weights=None,
+        black_weights=None,
+    ):
         white_transformed = self.activation(
-            self.ft_white(white_indices, white_offsets)
+            self.ft_white(white_indices, white_offsets, per_sample_weights=white_weights)
         )
         black_transformed = self.activation(
-            self.ft_black(black_indices, black_offsets)
+            self.ft_black(black_indices, black_offsets, per_sample_weights=black_weights)
         )
 
         x = torch.cat([white_transformed, black_transformed], dim=1)
@@ -441,28 +609,27 @@ def train_epoch(
     epoch_progress = epoch_idx / max(1, total_epochs - 1)
 
     for batch_idx, batch in enumerate(dataloader):
-        (
-            white_indices,
-            white_offsets,
-            black_indices,
-            black_offsets,
-            scores,
-            outcomes,
-        ) = batch
-
         batch_start_time = time.time()
 
-        white_indices = white_indices.to(device)
-        white_offsets = white_offsets.to(device)
-        black_indices = black_indices.to(device)
-        black_offsets = black_offsets.to(device)
-        scores = scores.to(device)
-        outcomes = outcomes.to(device)
+        prepared = prepare_sparse_batch(batch, device)
 
         optimizer.zero_grad()
-        predictions = model(white_indices, white_offsets, black_indices, black_offsets)
+        predictions = model(
+            prepared.white_indices,
+            prepared.white_offsets,
+            prepared.black_indices,
+            prepared.black_offsets,
+            prepared.white_weights,
+            prepared.black_weights,
+        )
 
-        loss = compute_loss(predictions, scores, outcomes, loss_params, epoch_progress)
+        loss = compute_loss(
+            predictions,
+            prepared.scores,
+            prepared.outcomes,
+            loss_params,
+            epoch_progress,
+        )
 
         if not torch.isfinite(loss):
             print(f"  Warning: Non-finite loss at batch {batch_idx}, skipping...")
@@ -478,7 +645,7 @@ def train_epoch(
 
         batch_time = time.time() - batch_start_time
         batch_times.append(batch_time)
-        batch_size = outcomes.size(0)
+        batch_size = prepared.size
         samples_per_sec = batch_size / batch_time if batch_time > 0 else 0
 
         wandb.log(
@@ -530,29 +697,23 @@ def validate(model, dataloader, loss_params: LossParams, device, epoch_idx: int,
 
     with torch.no_grad():
         for batch in dataloader:
-            (
-                white_indices,
-                white_offsets,
-                black_indices,
-                black_offsets,
-                scores,
-                outcomes,
-            ) = batch
-
-            white_indices = white_indices.to(device)
-            white_offsets = white_offsets.to(device)
-            black_indices = black_indices.to(device)
-            black_offsets = black_offsets.to(device)
-            scores = scores.to(device)
-            outcomes = outcomes.to(device)
+            prepared = prepare_sparse_batch(batch, device)
 
             predictions = model(
-                white_indices,
-                white_offsets,
-                black_indices,
-                black_offsets,
+                prepared.white_indices,
+                prepared.white_offsets,
+                prepared.black_indices,
+                prepared.black_offsets,
+                prepared.white_weights,
+                prepared.black_weights,
             )
-            loss = compute_loss(predictions, scores, outcomes, loss_params, epoch_progress)
+            loss = compute_loss(
+                predictions,
+                prepared.scores,
+                prepared.outcomes,
+                loss_params,
+                epoch_progress,
+            )
 
             total_loss += loss.item()
             num_batches += 1
@@ -564,8 +725,6 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Train HalfKP chess neural network')
     parser.add_argument('data_dir', nargs='?', help='Directory containing binpack training data')
-    parser.add_argument('--binpack-converter', default=None,
-                        help='Path to an existing binpack-reader binary to use for streaming conversion.')
     args = parser.parse_args()
     
     # Hyperparameters
@@ -573,7 +732,7 @@ def main():
     LEARNING_RATE = 8.75e-4
     NUM_EPOCHS = 600
     GAMMA = 0.992
-    NUM_WORKERS = 0
+    NUM_WORKERS = 4
     THREADS = 2
     NETWORK_SAVE_PERIOD = 10
     VALIDATION_SIZE = 1000000
@@ -581,19 +740,26 @@ def main():
     START_LAMBDA = 1.0
     END_LAMBDA = 0.75
     RANDOM_FEN_SKIPPING = 3
-    STREAMING = True  # Use streaming dataset for all data
     VAL_SAMPLES = 50000  # Number of positions for validation set
     
     # Device - prioritize Metal (MPS) for Mac, then CUDA, then CPU
-    if torch.backends.mps.is_available():
-        device = torch.device('mps')
-        print(f"Using device: MPS (Metal Performance Shaders)")
-    elif torch.cuda.is_available():
+    if torch.cuda.is_available():
         device = torch.device('cuda')
-        print(f"Using device: CUDA")
+        print("Using device: CUDA")
+    elif torch.backends.mps.is_available():
+        mps_env = os.environ.get("PYTORCH_ENABLE_MPS_FALLBACK")
+        if mps_env == "1":
+            device = torch.device('mps')
+            print("Using device: MPS with CPU fallback for unsupported operators")
+        else:
+            print(
+                "MPS detected but embedding_bag is unsupported; falling back to CPU. "
+                "Set PYTORCH_ENABLE_MPS_FALLBACK=1 before launching to enable automatic CPU fallback."
+            )
+            device = torch.device('cpu')
     else:
         device = torch.device('cpu')
-        print(f"Using device: CPU")
+        print("Using device: CPU")
     print(f"Device: {device}")
 
     if THREADS > 0:
@@ -615,49 +781,44 @@ def main():
     if not binpack_paths:
         raise ValueError(f"No binpack files found in {data_dir}")
 
-    converter_path = _locate_binpack_reader(args.binpack_converter)
-    if converter_path is None:
-        raise RuntimeError(
-            "Could not locate or build binpack-reader binary. Please run "
-            "`cargo build --release` in data-hf/binpack-reader or provide an explicit path via --binpack-converter."
-        )
-
-    print(f"Using binpack-reader at {converter_path}")
-    
-    # Create validation set from a random subset of files
-    # Randomize file selection to avoid chronological bias
+    # Randomly select validation files (~5%)
     binpack_paths_shuffled = binpack_paths.copy()
     np.random.shuffle(binpack_paths_shuffled)
-    val_files = binpack_paths_shuffled[:1]
-    print(f"Using {len(val_files)} randomly selected file(s) for validation set")
-    
-    val_dataset = ChessDataset(val_files, converter_path=converter_path, max_samples=VAL_SAMPLES)
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        collate_fn=collate_fn,
-        num_workers=NUM_WORKERS,
-        pin_memory=torch.cuda.is_available() or torch.backends.mps.is_available(),
+    val_file_count = max(1, len(binpack_paths) // 20)
+    val_files = binpack_paths_shuffled[:val_file_count]
+    print(f"Using {len(binpack_paths) - len(val_files)} file(s) for training set")
+    print(f"Using {len(val_files)} file(s) for validation set")
+
+    train_skip_config = DataloaderSkipConfig(
+        filtered=True,
+        random_fen_skipping=RANDOM_FEN_SKIPPING,
+        wld_filtered=True,
     )
-    
-    # Create streaming training dataset (all files)
-    print("\nCreating streaming training dataset...")
-    train_dataset = StreamingChessDataset(
+    val_skip_config = DataloaderSkipConfig()
+
+    val_loader = create_sparse_dataloader(
+        val_files,
+        batch_size=BATCH_SIZE,
+        positions_per_epoch=VAL_SAMPLES,
+        skip_config=val_skip_config,
+        num_workers=NUM_WORKERS,
+        cyclic=False,
+    )
+
+    print("\nCreating sparse training dataloader backed by C++ reader...")
+    train_loader = create_sparse_dataloader(
         binpack_paths,
-        converter_path=converter_path,
-        shuffle_files=True,
-        random_skip=RANDOM_FEN_SKIPPING,
-    )
-    train_loader = DataLoader(
-        train_dataset,
         batch_size=BATCH_SIZE,
-        collate_fn=collate_fn,
+        positions_per_epoch=EPOCH_SIZE,
+        skip_config=train_skip_config,
         num_workers=NUM_WORKERS,
-        pin_memory=torch.cuda.is_available() or torch.backends.mps.is_available(),
+        cyclic=True,
     )
-    
-    print(f"Validation set size: {len(val_dataset)}")
+
+    val_batches = len(val_loader.dataset) if hasattr(val_loader, "dataset") else None
+    if val_batches is not None:
+        approx_positions = val_batches * BATCH_SIZE
+        print(f"Validation batches per epoch: {val_batches} (~{approx_positions:,} positions)")
     
     # Initialize model
     model = HalfKPNetwork().to(device)
@@ -667,9 +828,6 @@ def main():
 
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=GAMMA)
-    
-    print("[CHECKPOINT] Model and optimizer initialized")
-    sys.stdout.flush()
     
     # Initialize wandb
     wandb.init(
@@ -687,12 +845,10 @@ def main():
             "start_lambda": START_LAMBDA,
             "end_lambda": END_LAMBDA,
             "random_fen_skipping": RANDOM_FEN_SKIPPING,
-            "streaming": STREAMING,
+            "loader": "nnue_cpp_sparse",
             "device": str(device),
             "num_binpack_files": len(binpack_paths),
             "data_dir": str(data_dir),
-            "binpack_converter": str(converter_path),
-            "binpack_stream_mode": "stdout",
         }
     )
     
@@ -703,10 +859,6 @@ def main():
         print(f"\n{'='*60}")
         print(f"Epoch {epoch+1}/{NUM_EPOCHS}")
         print(f"{'='*60}")
-        sys.stdout.flush()
-        
-        print(f"[CHECKPOINT] About to call train_epoch")
-        sys.stdout.flush()
         
         train_loss = train_epoch(
             model,
@@ -718,9 +870,6 @@ def main():
             NUM_EPOCHS,
             is_streaming=True,
         )
-        print(f"[CHECKPOINT] train_epoch returned, train_loss={train_loss:.6f}")
-        sys.stdout.flush()
-        
         val_loss = validate(
             model,
             val_loader,
@@ -729,12 +878,8 @@ def main():
             epoch,
             NUM_EPOCHS,
         )
-        print(f"[CHECKPOINT] validate returned, val_loss={val_loss:.6f}")
-        sys.stdout.flush()
         
         print(f"\nEpoch {epoch+1} Summary - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
-        sys.stdout.flush()
-
         
         current_lr = optimizer.param_groups[0]["lr"]
         epoch_progress = epoch / max(1, NUM_EPOCHS - 1)

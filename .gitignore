@@ -4,3 +4,6 @@ binpack-reader/.cargo/
 binpack-reader/target/
 .venv/
 wandb/
+halfkp/training_data_loader.dylib
+halfkp/training_data_loader.so
+halfkp/training_data_loader.dll
