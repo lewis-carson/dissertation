@@ -16,6 +16,8 @@ echo "Time: $(date)"
 echo "Host: $(hostname)"
 echo "GPU: $(nvidia-smi -L)"
 
+source .venv/bin/activate
+
 python -u halfkp/train.py 
 
 echo "Training job completed at $(date)"
