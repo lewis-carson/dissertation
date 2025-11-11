@@ -657,18 +657,20 @@ def train_epoch(
             }
         )
 
-        if batch_idx % 500 == 0:
+        if num_batches % 100 == 0 or batch_idx % 500 == 0:
             avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
             avg_batch_time = np.mean(batch_times[-100:]) if batch_times else 0.0
             if is_streaming:
                 print(
-                    "  Batch {:d}, Avg Loss: {:.6f}, Current Loss: {:.6f}, Batch Time: {:.3f}s, Samples/sec: {:.0f}".format(
+                    "  Batch {:d} (processed {:.0f}), Avg Loss: {:.6f}, Current Loss: {:.6f}, Batch Time: {:.3f}s, Samples/sec: {:.0f}".format(
                         batch_idx,
+                        num_batches,
                         avg_loss,
                         loss.item(),
                         batch_time,
                         samples_per_sec,
-                    )
+                    ),
+                    flush=True
                 )
             else:
                 print(
@@ -678,7 +680,8 @@ def train_epoch(
                         loss.item(),
                         batch_time,
                         samples_per_sec,
-                    )
+                    ),
+                    flush=True
                 )
 
     epoch_duration = time.time() - epoch_start_time
