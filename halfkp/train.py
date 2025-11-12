@@ -823,23 +823,6 @@ def main():
         wld_filtered=True,
     )
     val_skip_config = DataloaderSkipConfig()
-
-    val_loader = create_sparse_dataloader(
-        val_files,
-        batch_size=BATCH_SIZE,
-        skip_config=val_skip_config,
-        num_workers=NUM_WORKERS,
-        cyclic=False,
-    )
-
-    print("\nCreating sparse training dataloader backed by C++ reader...")
-    train_loader = create_sparse_dataloader(
-        binpack_paths,
-        batch_size=BATCH_SIZE,
-        skip_config=train_skip_config,
-        num_workers=NUM_WORKERS,
-        cyclic=False,
-    )
     
     # Initialize model
     model = HalfKPNetwork().to(device)
@@ -879,6 +862,25 @@ def main():
         print(f"Epoch {epoch+1}/{NUM_EPOCHS}")
         print(f"{'='*60}")
         
+        # Create fresh dataloaders for each epoch
+        print("Creating training dataloader...")
+        train_loader = create_sparse_dataloader(
+            binpack_paths,
+            batch_size=BATCH_SIZE,
+            skip_config=train_skip_config,
+            num_workers=NUM_WORKERS,
+            cyclic=False,
+        )
+        
+        print("Creating validation dataloader...")
+        val_loader = create_sparse_dataloader(
+            val_files,
+            batch_size=BATCH_SIZE,
+            skip_config=val_skip_config,
+            num_workers=NUM_WORKERS,
+            cyclic=False,
+        )
+        
         train_loss = train_epoch(
             model,
             train_loader,
@@ -889,6 +891,8 @@ def main():
             NUM_EPOCHS,
             is_streaming=True,
         )
+        print("Training epoch complete, starting validation...")
+        
         val_loss = validate(
             model,
             val_loader,
@@ -897,8 +901,12 @@ def main():
             epoch,
             NUM_EPOCHS,
         )
+        print("Validation complete")
         
         print(f"\nEpoch {epoch+1} Summary - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
+        print("Updating learning rate...")
+        scheduler.step()
+        print("Logging metrics to wandb...")
         
         current_lr = optimizer.param_groups[0]["lr"]
         epoch_progress = epoch / max(1, NUM_EPOCHS - 1)
@@ -913,8 +921,7 @@ def main():
                 "lambda": current_lambda,
             }
         )
-
-        scheduler.step()
+        print("Metrics logged")
         
         # Save checkpoint
         if (epoch + 1) % 5 == 0:
