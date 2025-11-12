@@ -459,10 +459,9 @@ def prepare_sparse_batch(batch, device: torch.device) -> PreparedBatch:
 def create_sparse_dataloader(
     binpack_files,
     batch_size: int,
-    positions_per_epoch: int,
     skip_config: DataloaderSkipConfig,
     num_workers: int = 0,
-    cyclic: bool = True,
+    cyclic: bool = False,
 ):
     """Build a DataLoader backed by the nnue-pytorch C++ sparse pipeline."""
 
@@ -476,10 +475,7 @@ def create_sparse_dataloader(
         num_workers=num_workers,
     )
 
-    num_batches = max(1, math.ceil(positions_per_epoch / batch_size))
-    fixed_dataset = FixedNumBatchesDataset(dataset, num_batches)
-
-    return DataLoader(fixed_dataset, batch_size=None)
+    return DataLoader(dataset, batch_size=None)
 def _gather_paths(base_dir, patterns):
     """Collect files in base_dir matching patterns recursively."""
     collected = []
@@ -662,8 +658,9 @@ def train_epoch(
             avg_batch_time = np.mean(batch_times[-100:]) if batch_times else 0.0
             if is_streaming:
                 print(
-                    "  Batch {:d} (processed {:.0f}), Avg Loss: {:.6f}, Current Loss: {:.6f}, Batch Time: {:.3f}s, Samples/sec: {:.0f}".format(
+                    "  Batch {}/{} (processed {:.0f}), Avg Loss: {:.6f}, Current Loss: {:.6f}, Batch Time: {:.3f}s, Samples/sec: {:.0f}".format(
                         batch_idx,
+                        num_batches,
                         num_batches,
                         avg_loss,
                         loss.item(),
@@ -686,6 +683,9 @@ def train_epoch(
 
     epoch_duration = time.time() - epoch_start_time
     wandb.log({"epoch_time_sec": epoch_duration})
+    
+    # Print final epoch summary
+    print(f"\nEpoch complete: {num_batches} batches processed")
 
     return total_loss / num_batches if num_batches > 0 else 0.0
 
@@ -738,12 +738,9 @@ def main():
     NUM_WORKERS = 4
     THREADS = 2
     NETWORK_SAVE_PERIOD = 10
-    VALIDATION_SIZE = 1000000
-    EPOCH_SIZE = 100000000
     START_LAMBDA = 1.0
     END_LAMBDA = 0.75
     RANDOM_FEN_SKIPPING = 3
-    VAL_SAMPLES = 50000  # Number of positions for validation set
     
     # Device - prioritize Metal (MPS) for Mac, then CUDA, then CPU
     if torch.cuda.is_available():
@@ -802,7 +799,6 @@ def main():
     val_loader = create_sparse_dataloader(
         val_files,
         batch_size=BATCH_SIZE,
-        positions_per_epoch=VAL_SAMPLES,
         skip_config=val_skip_config,
         num_workers=NUM_WORKERS,
         cyclic=False,
@@ -812,16 +808,10 @@ def main():
     train_loader = create_sparse_dataloader(
         binpack_paths,
         batch_size=BATCH_SIZE,
-        positions_per_epoch=EPOCH_SIZE,
         skip_config=train_skip_config,
         num_workers=NUM_WORKERS,
-        cyclic=True,
+        cyclic=False,
     )
-
-    val_batches = len(val_loader.dataset) if hasattr(val_loader, "dataset") else None
-    if val_batches is not None:
-        approx_positions = val_batches * BATCH_SIZE
-        print(f"Validation batches per epoch: {val_batches} (~{approx_positions:,} positions)")
     
     # Initialize model
     model = HalfKPNetwork().to(device)
@@ -843,8 +833,6 @@ def main():
             "num_workers": NUM_WORKERS,
             "threads": THREADS,
             "network_save_period": NETWORK_SAVE_PERIOD,
-            "validation_size": VALIDATION_SIZE,
-            "epoch_size": EPOCH_SIZE,
             "start_lambda": START_LAMBDA,
             "end_lambda": END_LAMBDA,
             "random_fen_skipping": RANDOM_FEN_SKIPPING,
