@@ -6842,10 +6842,16 @@ namespace binpack
         {
             unsigned char header[8];
             m_file.read(reinterpret_cast<char*>(header), 8);
+            
+            if (!m_file || m_file.gcount() < 8)
+            {
+                throw std::runtime_error("Failed to read chunk header from " + m_path + " - file may be corrupted or truncated");
+            }
+            
             if (header[0] != 'B' || header[1] != 'I' || header[2] != 'N' || header[3] != 'P')
             {
-                assert(false);
-                // throw std::runtime_error("Invalid binpack file or chunk.");
+                throw std::runtime_error("Invalid binpack file header for " + m_path + " - expected 'BINP' magic bytes but got '" + 
+                    std::string(reinterpret_cast<char*>(header), 4) + "'. File may be corrupted or wrong format.");
             }
 
             const std::uint32_t size =
@@ -7563,9 +7569,23 @@ namespace binpack
                 return e;
             }
 
+            // Validate we have enough data for a PackedTrainingDataEntry
+            if (m_offset + sizeof(PackedTrainingDataEntry) > m_chunk.size())
+            {
+                throw std::runtime_error("Corrupted binpack: not enough data for PackedTrainingDataEntry at offset " + 
+                    std::to_string(m_offset) + " in chunk of size " + std::to_string(m_chunk.size()));
+            }
+
             PackedTrainingDataEntry packed;
             std::memcpy(&packed, m_chunk.data() + m_offset, sizeof(PackedTrainingDataEntry));
             m_offset += sizeof(PackedTrainingDataEntry);
+
+            // Validate we have enough data for numPlies field
+            if (m_offset + 2 > m_chunk.size())
+            {
+                throw std::runtime_error("Corrupted binpack: not enough data for numPlies field at offset " + 
+                    std::to_string(m_offset) + " in chunk of size " + std::to_string(m_chunk.size()));
+            }
 
             const std::uint16_t numPlies = (m_chunk[m_offset] << 8) | m_chunk[m_offset + 1];
             m_offset += 2;

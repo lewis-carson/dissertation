@@ -301,12 +301,24 @@ class SparseBatchIterableDataset(IterableDataset):
         )
         device = torch.device("cpu")
         try:
+            batch_count = 0
             while True:
-                batch_ptr = fetch_next_sparse_batch(stream)
+                try:
+                    batch_ptr = fetch_next_sparse_batch(stream)
+                except Exception as e:
+                    raise RuntimeError(f"Error fetching batch {batch_count} from C++ dataloader: {e}") from e
+                
                 if batch_ptr is None:
                     break
-                tensors = batch_ptr.contents.get_tensors(device)
-                destroy_sparse_batch(batch_ptr)
+                
+                try:
+                    tensors = batch_ptr.contents.get_tensors(device)
+                except Exception as e:
+                    raise RuntimeError(f"Error converting batch {batch_count} to tensors: {e}") from e
+                finally:
+                    destroy_sparse_batch(batch_ptr)
+                
+                batch_count += 1
                 yield tensors
         finally:
             destroy_sparse_batch_stream(stream)
@@ -780,6 +792,22 @@ def main():
     
     if not binpack_paths:
         raise ValueError(f"No binpack files found in {data_dir}")
+    
+    # Validate binpack files
+    print("Validating binpack files...")
+    min_file_size = 1024  # Minimum reasonable size
+    for binpack_file in binpack_paths:
+        if not binpack_file.is_file():
+            raise ValueError(f"Binpack path is not a file: {binpack_file}")
+        
+        file_size = binpack_file.stat().st_size
+        if file_size == 0:
+            raise ValueError(f"Binpack file is empty: {binpack_file}")
+        
+        if file_size < min_file_size:
+            print(f"  Warning: {binpack_file} is suspiciously small ({file_size} bytes)")
+    
+    print(f"Validated {len(binpack_paths)} binpack file(s)")
 
     # Randomly select validation files (~5%)
     binpack_paths_shuffled = binpack_paths.copy()
