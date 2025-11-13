@@ -687,7 +687,7 @@ def main():
     LEARNING_RATE = 8.75e-4
     NUM_EPOCHS = 600
     GAMMA = 0.992
-    NUM_WORKERS = 4
+    NUM_WORKERS = 0
     THREADS = 2
     NETWORK_SAVE_PERIOD = 10
     START_LAMBDA = 1.0
