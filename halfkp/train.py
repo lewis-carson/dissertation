@@ -324,66 +324,6 @@ class SparseBatchIterableDataset(IterableDataset):
             destroy_sparse_batch_stream(stream)
 
 
-class FixedNumBatchesDataset(Dataset):
-    def __init__(self, dataset, num_batches):
-        super().__init__()
-        self.dataset = dataset
-        self.iter = iter(self.dataset)
-        self.num_batches = num_batches
-
-        self._prefetch_queue = queue.Queue(maxsize=100)
-        self._prefetch_thread = None
-        self._stop_prefetching = threading.Event()
-        self._prefetch_started = False
-        self._lock = threading.Lock()
-
-    def _prefetch_worker(self):
-        try:
-            while not self._stop_prefetching.is_set():
-                try:
-                    item = next(self.iter)
-                    self._prefetch_queue.put(item)
-                except StopIteration:
-                    self._prefetch_queue.put(None)
-                    break
-                except queue.Full:
-                    continue
-        except Exception as exc:
-            self._prefetch_queue.put(exc)
-
-    def _start_prefetching(self):
-        with self._lock:
-            if not self._prefetch_started:
-                self._prefetch_thread = threading.Thread(
-                    target=self._prefetch_worker,
-                    daemon=True,
-                )
-                self._prefetch_thread.start()
-                self._prefetch_started = True
-
-    def __len__(self):
-        return self.num_batches
-
-    def __getitem__(self, idx):
-        self._start_prefetching()
-
-        try:
-            item = self._prefetch_queue.get(timeout=300.0)
-            if item is None:
-                raise StopIteration("End of dataset reached")
-            if isinstance(item, Exception):
-                raise item
-            return item
-        except queue.Empty as exc:
-            raise RuntimeError("Prefetch timeout - no data available") from exc
-
-    def __del__(self):
-        if hasattr(self, "_stop_prefetching"):
-            self._stop_prefetching.set()
-        if hasattr(self, "_prefetch_thread") and self._prefetch_thread:
-            self._prefetch_thread.join(timeout=1.0)
-
-
 @dataclass
 class PreparedBatch:
     white_indices: torch.Tensor
@@ -823,6 +763,23 @@ def main():
         wld_filtered=True,
     )
     val_skip_config = DataloaderSkipConfig()
+
+    val_loader = create_sparse_dataloader(
+        val_files,
+        batch_size=BATCH_SIZE,
+        skip_config=val_skip_config,
+        num_workers=NUM_WORKERS,
+        cyclic=False,
+    )
+
+    print("\nCreating sparse training dataloader backed by C++ reader...")
+    train_loader = create_sparse_dataloader(
+        binpack_paths,
+        batch_size=BATCH_SIZE,
+        skip_config=train_skip_config,
+        num_workers=NUM_WORKERS,
+        cyclic=False,
+    )
     
     # Initialize model
     model = HalfKPNetwork().to(device)
@@ -861,24 +818,6 @@ def main():
         print(f"\n{'='*60}")
         print(f"Epoch {epoch+1}/{NUM_EPOCHS}")
         print(f"{'='*60}")
-        
-        # Create fresh loaders for this epoch
-        print("\nCreating sparse training dataloader backed by C++ reader...")
-        train_loader = create_sparse_dataloader(
-            binpack_paths,
-            batch_size=BATCH_SIZE,
-            skip_config=train_skip_config,
-            num_workers=NUM_WORKERS,
-            cyclic=False,
-        )
-        
-        val_loader = create_sparse_dataloader(
-            val_files,
-            batch_size=BATCH_SIZE,
-            skip_config=val_skip_config,
-            num_workers=NUM_WORKERS,
-            cyclic=False,
-        )
         
         train_loss = train_epoch(
             model,
