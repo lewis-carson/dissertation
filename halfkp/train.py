@@ -291,12 +291,6 @@ class SparseBatchIterableDataset(IterableDataset):
         self.num_workers = num_workers
 
     def __iter__(self):
-        # Print the order of files being streamed
-        print("\nStarting to stream files in order:")
-        for i, filename in enumerate(self.filenames, 1):
-            print(f"  {i}. {Path(filename).name}")
-        print()
-        
         stream = create_sparse_batch_stream(
             self.feature_set,
             self.num_workers,
@@ -815,23 +809,12 @@ def main():
     
     print(f"Validated {len(binpack_paths)} binpack file(s)")
 
-    # Shuffle the training files
+    # Randomly select validation files (~5%)
     binpack_paths_shuffled = binpack_paths.copy()
     np.random.shuffle(binpack_paths_shuffled)
-    
-    print(f"Shuffled {len(binpack_paths_shuffled)} training file(s)")
-    for i, path in enumerate(binpack_paths_shuffled[:5]):
-        print(f"  {i+1}. {path.name}")
-    if len(binpack_paths_shuffled) > 5:
-        print(f"  ... and {len(binpack_paths_shuffled) - 5} more files")
-    
-    # Randomly select validation files (~5%)
-    binpack_paths_val = binpack_paths_shuffled.copy()
-    np.random.shuffle(binpack_paths_val)
     val_file_count = max(1, len(binpack_paths) // 20)
-    val_files = binpack_paths_val[:val_file_count]
-    train_files = binpack_paths_shuffled[val_file_count:]
-    print(f"Using {len(train_files)} file(s) for training set")
+    val_files = binpack_paths_shuffled[:val_file_count]
+    print(f"Using {len(binpack_paths) - len(val_files)} file(s) for training set")
     print(f"Using {len(val_files)} file(s) for validation set")
 
     train_skip_config = DataloaderSkipConfig(
@@ -840,23 +823,6 @@ def main():
         wld_filtered=True,
     )
     val_skip_config = DataloaderSkipConfig()
-
-    val_loader = create_sparse_dataloader(
-        val_files,
-        batch_size=BATCH_SIZE,
-        skip_config=val_skip_config,
-        num_workers=NUM_WORKERS,
-        cyclic=False,
-    )
-
-    print("\nCreating sparse training dataloader backed by C++ reader...")
-    train_loader = create_sparse_dataloader(
-        train_files,
-        batch_size=BATCH_SIZE,
-        skip_config=train_skip_config,
-        num_workers=NUM_WORKERS,
-        cyclic=False,
-    )
     
     # Initialize model
     model = HalfKPNetwork().to(device)
@@ -895,6 +861,24 @@ def main():
         print(f"\n{'='*60}")
         print(f"Epoch {epoch+1}/{NUM_EPOCHS}")
         print(f"{'='*60}")
+        
+        # Create fresh loaders for this epoch
+        print("\nCreating sparse training dataloader backed by C++ reader...")
+        train_loader = create_sparse_dataloader(
+            binpack_paths,
+            batch_size=BATCH_SIZE,
+            skip_config=train_skip_config,
+            num_workers=NUM_WORKERS,
+            cyclic=False,
+        )
+        
+        val_loader = create_sparse_dataloader(
+            val_files,
+            batch_size=BATCH_SIZE,
+            skip_config=val_skip_config,
+            num_workers=NUM_WORKERS,
+            cyclic=False,
+        )
         
         train_loss = train_epoch(
             model,
