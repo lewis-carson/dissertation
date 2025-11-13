@@ -632,6 +632,7 @@ def train_epoch(
                     ),
                     flush=True
                 )
+            print("batch done")
 
     epoch_duration = time.time() - epoch_start_time
     wandb.log({"epoch_time_sec": epoch_duration})
@@ -687,7 +688,7 @@ def main():
     LEARNING_RATE = 8.75e-4
     NUM_EPOCHS = 600
     GAMMA = 0.992
-    NUM_WORKERS = 0
+    NUM_WORKERS = 4
     THREADS = 2
     NETWORK_SAVE_PERIOD = 10
     START_LAMBDA = 1.0
