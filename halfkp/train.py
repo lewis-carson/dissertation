@@ -632,7 +632,7 @@ def train_epoch(
                     ),
                     flush=True
                 )
-            print("batch done")
+        print("batch done")
 
     epoch_duration = time.time() - epoch_start_time
     wandb.log({"epoch_time_sec": epoch_duration})
