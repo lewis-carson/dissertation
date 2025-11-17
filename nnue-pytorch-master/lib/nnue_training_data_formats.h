@@ -7609,6 +7609,7 @@ namespace binpack
         {
             if (!m_inputFile.hasNextChunk())
             {
+                fprintf(stderr, "[DBG] CompressedTrainingDataEntryReader: file has no chunks: %s (size=%zu bytes)\n", path.c_str(), m_inputFile.sizeBytes());
                 m_isEnd = true;
             }
             else
@@ -7742,7 +7743,7 @@ namespace binpack
                 CompressedTrainingDataFile inputFile(path, om | std::ios_base::in);
                 if (!inputFile.hasNextChunk())
                 {
-                    fprintf(stderr, "[WARN] CompressedTrainingDataEntryParallelReader: skipping file with no chunks: %s\n", path.c_str());
+                    fprintf(stderr, "[WARN] CompressedTrainingDataEntryParallelReader: skipping file with no chunks: %s (size=%zu bytes)\n", path.c_str(), inputFile.sizeBytes());
                     continue;
                 }
 
@@ -7994,7 +7995,10 @@ namespace binpack
                         inputFile.seek_to_start();
                     }
                     else
+                    {
+                        fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader fetchNextChunkIfNeeded: fileId=%zu path=%s has no chunks (m_readOffset=%zu), treating as EOF for this worker\n", fileId, inputFile.path().c_str(), inputFile.readOffset());
                         return true;
+                    }
                 }
 
                 try
