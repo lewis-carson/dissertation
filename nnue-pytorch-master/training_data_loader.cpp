@@ -576,7 +576,9 @@ struct FeaturedBatchStream : Stream<StorageT>
     StorageT* next() override
     {
         std::unique_lock lock(m_batch_mutex);
-        m_batches_any.wait(lock, [this]() { return !m_batches.empty() || m_num_workers.load() == 0; });
+        // Use <= 0 to be robust against transient negative values in
+        // the worker counter (in case of tiny races between spawn/exit).
+        m_batches_any.wait(lock, [this]() { return !m_batches.empty() || m_num_workers.load() <= 0; });
 
         if (!m_batches.empty())
         {
@@ -619,7 +621,11 @@ private:
     std::condition_variable m_batches_not_full;
     std::condition_variable m_batches_any;
     std::atomic_bool m_stop_flag;
-    std::atomic_int m_num_workers;
+    // Ensure worker counter is explicitly initialised to zero to avoid
+    // undefined behaviour from reading an uninitialised atomic on some
+    // platforms/compilers. This avoids races where a negative or random
+    // value would make the consumer wait forever.
+    std::atomic_int m_num_workers{0};
 
     std::vector<std::thread> m_workers;
 };
@@ -761,7 +767,7 @@ struct FenBatchStream : Stream<FenBatch>
     FenBatch* next()
     {
         std::unique_lock lock(m_batch_mutex);
-        m_batches_any.wait(lock, [this]() { return !m_batches.empty() || m_num_workers.load() == 0; });
+        m_batches_any.wait(lock, [this]() { return !m_batches.empty() || m_num_workers.load() <= 0; });
 
         if (!m_batches.empty())
         {
@@ -804,7 +810,7 @@ private:
     std::condition_variable m_batches_not_full;
     std::condition_variable m_batches_any;
     std::atomic_bool m_stop_flag;
-    std::atomic_int m_num_workers;
+    std::atomic_int m_num_workers{0};
 
     std::vector<std::thread> m_workers;
 };

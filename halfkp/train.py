@@ -557,7 +557,7 @@ def train_epoch(
     epoch_progress = epoch_idx / max(1, total_epochs - 1)
 
     for batch_idx, batch in enumerate(dataloader):
-        print("starting batch")
+        #print("starting batch")
         batch_start_time = time.time()
 
         prepared = prepare_sparse_batch(batch, device)
@@ -633,7 +633,7 @@ def train_epoch(
                     ),
                     flush=True
                 )
-        print("batch done")
+        #print("batch done")
 
     epoch_duration = time.time() - epoch_start_time
     wandb.log({"epoch_time_sec": epoch_duration})
