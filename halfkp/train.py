@@ -694,7 +694,7 @@ def main():
     NETWORK_SAVE_PERIOD = 10
     START_LAMBDA = 1.0
     END_LAMBDA = 0.75
-    RANDOM_FEN_SKIPPING = 3
+    RANDOM_FEN_SKIPPING = 0
     
     # Device - prioritize Metal (MPS) for Mac, then CUDA, then CPU
     if torch.cuda.is_available():
