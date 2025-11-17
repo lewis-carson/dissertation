@@ -7759,6 +7759,11 @@ namespace binpack
 
             m_inputFileDistribution = std::discrete_distribution<>(sizes.begin(), sizes.end());
 
+            // Initialize per-file counters for diagnostics
+            m_fileChunkReads.resize(m_inputFiles.size());
+            m_fileEntryCounts.resize(m_inputFiles.size());
+            m_fileFlushes.resize(m_inputFiles.size());
+
             m_stopFlag.store(false);
 
             auto worker = [this]()
@@ -7771,8 +7776,16 @@ namespace binpack
                 m_localBuffer.reserve(threadBufferSize);
 
                 bool isEnd = false;
+                std::size_t lastFileId = static_cast<std::size_t>(-1);
+                int currentFileId = -1;
+                std::size_t entries_from_current_file = 0;
                 try {
-                    isEnd = fetchNextChunkIfNeeded(m_offset, m_chunk);
+                    isEnd = fetchNextChunkIfNeeded(m_offset, m_chunk, &lastFileId);
+                    if (lastFileId != static_cast<std::size_t>(-1)) {
+                        currentFileId = static_cast<int>(lastFileId);
+                        fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader worker (thread=%zu) now reading fileId=%zu path=%s\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), lastFileId, m_inputFiles[lastFileId].path().c_str());
+                        entries_from_current_file = 0;
+                    }
                 } catch (const std::exception& e) {
                     fprintf(stderr, "[ERR] CompressedTrainingDataEntryParallelReader worker (thread=%zu) exception on initial fetchNextChunkIfNeeded: %s\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), e.what());
                     m_numRunningWorkers.fetch_sub(1);
@@ -7795,11 +7808,30 @@ namespace binpack
                                 m_offset += m_movelistReader->numReadBytes();
                                 m_movelistReader.reset();
 
-                                isEnd = fetchNextChunkIfNeeded(m_offset, m_chunk);
+                                isEnd = fetchNextChunkIfNeeded(m_offset, m_chunk, &lastFileId);
+                                if (lastFileId != static_cast<std::size_t>(-1) && static_cast<int>(lastFileId) != currentFileId) {
+                                    // log the switch: how many entries were read from previous file
+                                    if (currentFileId >= 0) {
+                                        size_t totalEntries = 0;
+                                        size_t flushes = 0;
+                                        {
+                                            std::lock_guard lock(m_countsMutex);
+                                            m_fileEntryCounts[currentFileId] += entries_from_current_file;
+                                            totalEntries = m_fileEntryCounts[currentFileId];
+                                            flushes = m_fileFlushes[currentFileId];
+                                        }
+                                        fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader worker (thread=%zu) switching file: previous fileId=%d path=%s entries_read=%zu total_entries=%zu flushes=%zu\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), currentFileId, m_inputFiles[currentFileId].path().c_str(), entries_from_current_file, totalEntries, flushes);
+                                    }
+                                    currentFileId = static_cast<int>(lastFileId);
+                                    entries_from_current_file = 0;
+                                }
                             }
 
                             if (!m_skipPredicate || !m_skipPredicate(e))
+                            {
                                 m_localBuffer.emplace_back(e);
+                                    if (currentFileId >= 0) entries_from_current_file++;
+                            }
                         }
                         else
                         {
@@ -7826,11 +7858,29 @@ namespace binpack
                             }
                             else
                             {
-                                isEnd = fetchNextChunkIfNeeded(m_offset, m_chunk);
+                                isEnd = fetchNextChunkIfNeeded(m_offset, m_chunk, &lastFileId);
+                                if (lastFileId != static_cast<std::size_t>(-1) && static_cast<int>(lastFileId) != currentFileId) {
+                                    if (currentFileId >= 0) {
+                                        size_t totalEntries = 0;
+                                        size_t flushes = 0;
+                                        {
+                                            std::lock_guard lock(m_countsMutex);
+                                            m_fileEntryCounts[currentFileId] += entries_from_current_file;
+                                            totalEntries = m_fileEntryCounts[currentFileId];
+                                            flushes = m_fileFlushes[currentFileId];
+                                        }
+                                        fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader worker (thread=%zu) switching file: previous fileId=%d path=%s entries_read=%zu total_entries=%zu flushes=%zu\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), currentFileId, m_inputFiles[currentFileId].path().c_str(), entries_from_current_file, totalEntries, flushes);
+                                    }
+                                    currentFileId = static_cast<int>(lastFileId);
+                                    entries_from_current_file = 0;
+                                }
                             }
 
                             if (!m_skipPredicate || !m_skipPredicate(e))
+                            {
                                 m_localBuffer.emplace_back(e);
+                                if (currentFileId >= 0) entries_from_current_file++;
+                            }
                         }
 
                         if (isEnd || m_stopFlag.load())
@@ -7852,6 +7902,21 @@ namespace binpack
 
                         lock.unlock();
                         m_waitingBufferFull.notify_one();
+
+                            if (currentFileId >= 0)
+                        {
+                            size_t totalEntries = 0;
+                            size_t flushes = 0;
+                            {
+                                std::lock_guard lock(m_countsMutex);
+                                m_fileFlushes[currentFileId] += 1;
+                                m_fileEntryCounts[currentFileId] += entries_from_current_file;
+                                totalEntries = m_fileEntryCounts[currentFileId];
+                                flushes = m_fileFlushes[currentFileId];
+                            }
+                            fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader worker (thread=%zu) flushed %zu entries attributed to fileId=%d path=%s total_entries=%zu flushes=%zu\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), entries_from_current_file, currentFileId, m_inputFiles[currentFileId].path().c_str(), totalEntries, flushes);
+                            entries_from_current_file = 0;
+                        }
 
                         m_localBuffer.clear();
                     }
@@ -7961,6 +8026,10 @@ namespace binpack
         std::vector<CompressedTrainingDataFile> m_inputFiles;
         std::discrete_distribution<> m_inputFileDistribution;
         std::atomic_int m_numRunningWorkers;
+        std::vector<std::size_t> m_fileChunkReads;
+        std::vector<std::size_t> m_fileEntryCounts;
+        std::vector<std::size_t> m_fileFlushes;
+        std::mutex m_countsMutex;
         bool m_cyclic;
 
         static constexpr int threadBufferSize = 256 * 256 * 16;
@@ -7977,7 +8046,7 @@ namespace binpack
 
         std::vector<std::thread> m_workers;
 
-        bool fetchNextChunkIfNeeded(std::size_t& m_offset, std::vector<unsigned char>& m_chunk)
+        bool fetchNextChunkIfNeeded(std::size_t& m_offset, std::vector<unsigned char>& m_chunk, std::size_t* outFileId = nullptr)
         {
             if (m_offset + sizeof(PackedTrainingDataEntry) + 2 > m_chunk.size())
             {
@@ -8004,6 +8073,11 @@ namespace binpack
                 try
                 {
                     m_chunk = inputFile.readNextChunk();
+                    if (outFileId) *outFileId = fileId;
+                    {
+                        std::lock_guard lock(m_countsMutex);
+                        m_fileChunkReads[fileId] += 1;
+                    }
                     m_offset = 0;
                 }
                 catch (const std::exception& e)
