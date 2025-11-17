@@ -712,6 +712,7 @@ namespace chess
     {
         [[nodiscard]] static constexpr Piece fromId(int id)
         {
+            
             return Piece(id);
         }
 
@@ -6775,42 +6776,55 @@ namespace binpack
             std::uint32_t chunkSize;
         };
 
-        CompressedTrainingDataFile(std::string path, std::ios_base::openmode om) :
+        CompressedTrainingDataFile(std::string path, std::ios_base::openmode /*om*/) :
             m_path(std::move(path)),
-            m_file(m_path, std::ios_base::binary | om)
+            m_file(),
+            m_readOffset(0)
         {
-            // Racey but who cares
+            // We retrieve file size without keeping the file handle open to
+            // avoid holding too many file descriptors open in parallel.
             m_sizeBytes = filesize(m_path.c_str());
         }
 
         void append(const char* data, std::uint32_t size)
         {
-            writeChunkHeader({size});
-            m_file.write(data, size);
+            // Append operations still open and write to the file.
+            std::ofstream out(m_path, std::ofstream::binary | std::ofstream::app);
+            writeChunkHeader(out, {size});
+            out.write(data, size);
+            out.flush();
             m_sizeBytes += size + 8;
         }
 
         [[nodiscard]] bool hasNextChunk()
         {
-            if (!m_file)
-            {
-                return false;
-            }
-
-            m_file.peek();
-            return !m_file.eof();
+            // Avoid keeping the file open; determine if there are further
+            // chunks based on the current read offset and the total size.
+            return m_readOffset + 8 /* minimum header */ < m_sizeBytes;
         }
 
         void seek_to_start()
         {
-            m_file.seekg(0);
+            m_readOffset = 0;
         }
 
         [[nodiscard]] std::vector<unsigned char> readNextChunk()
         {
-            auto size = readChunkHeader().chunkSize;
+            // Open a local file handle and read the next chunk at the
+            // current offset, then close the handle. This avoids keeping
+            // the file open across many files and threads.
+            std::ifstream in(m_path, std::ifstream::binary);
+            if (!in)
+            {
+                return {};
+            }
+            in.seekg(m_readOffset, std::ifstream::beg);
+            Header h = readChunkHeader(in);
+            auto size = h.chunkSize;
             std::vector<unsigned char> data(size);
-            m_file.read(reinterpret_cast<char*>(data.data()), size);
+            in.read(reinterpret_cast<char*>(data.data()), size);
+            // advance offset by header size + payload
+            m_readOffset += sizeof(Header) + size;
             return data;
         }
 
@@ -6818,11 +6832,24 @@ namespace binpack
         {
             return m_sizeBytes;
         }
+        
+    private:
+        static Header readChunkHeader(std::ifstream& in)
+        {
+            Header h;
+            in.read(reinterpret_cast<char*>(&h), sizeof(Header));
+            return h;
+        }
+        static void writeChunkHeader(std::ofstream& out, Header h)
+        {
+            out.write(reinterpret_cast<const char*>(&h), sizeof(Header));
+        }
 
     private:
         std::string m_path;
         std::fstream m_file;
         std::size_t m_sizeBytes;
+        std::size_t m_readOffset;
 
         void writeChunkHeader(Header h)
         {
