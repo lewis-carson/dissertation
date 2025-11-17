@@ -528,8 +528,6 @@ struct FeaturedBatchStream : Stream<StorageT>
             fprintf(stderr, "[DBG] FeaturedBatchStream worker started (thread=%zu)\n", std::hash<std::thread::id>{}(std::this_thread::get_id()));
             std::vector<TrainingDataEntry> entries;
             entries.reserve(m_batch_size);
-
-            try {
             try {
             while(!m_stop_flag.load())
             {
@@ -730,7 +728,7 @@ struct FenBatchStream : Stream<FenBatch>
             fprintf(stderr, "[DBG] FenBatchStream worker started (thread=%zu)\n", std::hash<std::thread::id>{}(std::this_thread::get_id()));
             std::vector<TrainingDataEntry> entries;
             entries.reserve(m_batch_size);
-
+            try {
             while(!m_stop_flag.load())
             {
                 entries.clear();
