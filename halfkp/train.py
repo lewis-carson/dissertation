@@ -760,9 +760,9 @@ def main():
     print(f"Using {len(val_files)} file(s) for validation set")
 
     train_skip_config = DataloaderSkipConfig(
-        filtered=True,
+        filtered=False,
         random_fen_skipping=RANDOM_FEN_SKIPPING,
-        wld_filtered=True,
+        wld_filtered=False,
     )
     val_skip_config = DataloaderSkipConfig()
 
