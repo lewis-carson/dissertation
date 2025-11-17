@@ -7645,6 +7645,7 @@ namespace binpack
             m_skipPredicate(std::move(skipPredicate))
         {
             m_numRunningWorkers.store(0);
+            fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader initialised with concurrency=%d\n", concurrency);
             std::vector<double> sizes; // discrete distribution wants double weights
             for (const auto& path : paths)
             {
@@ -7664,6 +7665,7 @@ namespace binpack
 
             auto worker = [this]()
             {
+                fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader worker started (thread=%zu)\n", std::hash<std::thread::id>{}(std::this_thread::get_id()));
                 std::vector<unsigned char> m_chunk{};
                 std::optional<PackedMoveScoreListReader> m_movelistReader(std::nullopt);
                 std::size_t m_offset(0);
@@ -7671,6 +7673,7 @@ namespace binpack
                 m_localBuffer.reserve(threadBufferSize);
 
                 bool isEnd = fetchNextChunkIfNeeded(m_offset, m_chunk);
+                fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader worker (thread=%zu) starting loop; isEnd=%d\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), isEnd);
 
                 while(!isEnd && !m_stopFlag.load())
                 {
@@ -7730,6 +7733,7 @@ namespace binpack
                         std::unique_lock lock(m_waitingBufferMutex);
                         m_waitingBufferEmpty.wait(lock, [this]() { return m_waitingBuffer.empty() || m_stopFlag.load(); });
                         m_waitingBuffer.swap(m_localBuffer);
+                        fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader worker (thread=%zu) swapped waiting buffer; waiting size=%zu\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), m_waitingBuffer.size());
 
                         lock.unlock();
                         m_waitingBufferFull.notify_one();
@@ -7739,6 +7743,7 @@ namespace binpack
                 }
 
                 m_numRunningWorkers.fetch_sub(1);
+                fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader worker (thread=%zu) exiting; numRunning=%d\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), m_numRunningWorkers.load());
 
                 m_waitingBufferFull.notify_one();
             };
@@ -7748,6 +7753,7 @@ namespace binpack
             // main thread increments the counter, which would cause
             // underflow and potential deadlocks for consumers.
             m_numRunningWorkers.store(concurrency);
+            fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader set expected m_numRunningWorkers=%d\n", m_numRunningWorkers.load());
             for (int i = 0; i < concurrency; ++i)
             {
                 m_workers.emplace_back(worker);
@@ -7761,9 +7767,11 @@ namespace binpack
                 m_buffer.clear();
 
                 std::unique_lock lock(m_waitingBufferMutex);
+                fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader next() waiting; numRunning=%d\n", m_numRunningWorkers.load());
                 m_waitingBufferFull.wait(lock, [this]() { return !m_waitingBuffer.empty() || !m_numRunningWorkers.load(); });
                 if (m_waitingBuffer.empty())
                 {
+                    fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader next() woke with empty waitingBuffer and numRunning=%d\n", m_numRunningWorkers.load());
                     return std::nullopt;
                 }
 
@@ -7784,9 +7792,11 @@ namespace binpack
                 m_buffer.clear();
 
                 std::unique_lock lock(m_waitingBufferMutex);
+                fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader fill() waiting; numRunning=%d\n", m_numRunningWorkers.load());
                 m_waitingBufferFull.wait(lock, [this]() { return !m_waitingBuffer.empty() || !m_numRunningWorkers.load(); });
                 if (m_waitingBuffer.empty())
                 {
+                    fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader fill() woke with empty waitingBuffer and numRunning=%d\n", m_numRunningWorkers.load());
                     return 0;
                 }
 

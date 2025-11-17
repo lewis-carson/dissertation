@@ -1,4 +1,6 @@
 #include <iostream>
+#include <cstdio>
+#include <functional>
 #include <memory>
 #include <string>
 #include <algorithm>
@@ -523,6 +525,7 @@ struct FeaturedBatchStream : Stream<StorageT>
 
         auto worker = [this]()
         {
+            fprintf(stderr, "[DBG] FeaturedBatchStream worker started (thread=%zu)\n", std::hash<std::thread::id>{}(std::this_thread::get_id()));
             std::vector<TrainingDataEntry> entries;
             entries.reserve(m_batch_size);
 
@@ -532,11 +535,13 @@ struct FeaturedBatchStream : Stream<StorageT>
 
                 {
                     std::unique_lock lock(m_stream_mutex);
-                    BaseType::m_stream->fill(entries, m_batch_size);
-                    if (entries.empty())
-                    {
-                        break;
-                    }
+                        BaseType::m_stream->fill(entries, m_batch_size);
+                        fprintf(stderr, "[DBG] FeaturedBatchStream worker (thread=%zu) fill returned %zu entries\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), entries.size());
+                        if (entries.empty())
+                        {
+                            fprintf(stderr, "[DBG] FeaturedBatchStream worker (thread=%zu) received empty entries, breaking\n", std::hash<std::thread::id>{}(std::this_thread::get_id()));
+                            break;
+                        }
                 }
 
                 auto batch = new StorageT(FeatureSet{}, entries);
@@ -546,6 +551,7 @@ struct FeaturedBatchStream : Stream<StorageT>
                     m_batches_not_full.wait(lock, [this]() { return m_batches.size() < m_concurrency + 1 || m_stop_flag.load(); });
 
                     m_batches.emplace_back(batch);
+                    fprintf(stderr, "[DBG] FeaturedBatchStream worker (thread=%zu) pushed batch; queue size=%zu\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), m_batches.size());
 
                     lock.unlock();
                     m_batches_any.notify_one();
@@ -553,6 +559,7 @@ struct FeaturedBatchStream : Stream<StorageT>
 
             }
             m_num_workers.fetch_sub(1);
+            fprintf(stderr, "[DBG] FeaturedBatchStream worker (thread=%zu) exiting; num_workers=%d\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), m_num_workers.load());
             m_batches_any.notify_one();
         };
 
@@ -564,6 +571,7 @@ struct FeaturedBatchStream : Stream<StorageT>
         // set expected number of active workers so the consumer wait
         // predicate can determine when workers have all finished.
         m_num_workers.store(num_feature_threads);
+        fprintf(stderr, "[DBG] FeaturedBatchStream initialised with num_feature_threads=%d\n", num_feature_threads);
         for (int i = 0; i < num_feature_threads; ++i)
         {
             m_workers.emplace_back(worker);
@@ -576,6 +584,8 @@ struct FeaturedBatchStream : Stream<StorageT>
         // Use <= 0 to be robust against transient negative values in
         // the worker counter (in case of tiny races between spawn/exit).
         m_batches_any.wait(lock, [this]() { return !m_batches.empty() || m_num_workers.load() <= 0; });
+
+        fprintf(stderr, "[DBG] FeaturedBatchStream next woke: queue=%zu num_workers=%d\n", m_batches.size(), m_num_workers.load());
 
         if (!m_batches.empty())
         {
@@ -711,6 +721,7 @@ struct FenBatchStream : Stream<FenBatch>
 
         auto worker = [this]()
         {
+            fprintf(stderr, "[DBG] FenBatchStream worker started (thread=%zu)\n", std::hash<std::thread::id>{}(std::this_thread::get_id()));
             std::vector<TrainingDataEntry> entries;
             entries.reserve(m_batch_size);
 
@@ -721,8 +732,10 @@ struct FenBatchStream : Stream<FenBatch>
                 {
                     std::unique_lock lock(m_stream_mutex);
                     BaseType::m_stream->fill(entries, m_batch_size);
+                    fprintf(stderr, "[DBG] FenBatchStream worker (thread=%zu) fill returned %zu entries\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), entries.size());
                     if (entries.empty())
                     {
+                        fprintf(stderr, "[DBG] FenBatchStream worker (thread=%zu) received empty entries, breaking\n", std::hash<std::thread::id>{}(std::this_thread::get_id()));
                         break;
                     }
                 }
@@ -734,6 +747,7 @@ struct FenBatchStream : Stream<FenBatch>
                     m_batches_not_full.wait(lock, [this]() { return m_batches.size() < m_concurrency + 1 || m_stop_flag.load(); });
 
                     m_batches.emplace_back(batch);
+                    fprintf(stderr, "[DBG] FenBatchStream worker (thread=%zu) pushed batch; queue size=%zu\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), m_batches.size());
 
                     lock.unlock();
                     m_batches_any.notify_one();
@@ -741,6 +755,7 @@ struct FenBatchStream : Stream<FenBatch>
 
             }
             m_num_workers.fetch_sub(1);
+            fprintf(stderr, "[DBG] FenBatchStream worker (thread=%zu) exiting; num_workers=%d\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), m_num_workers.load());
             m_batches_any.notify_one();
         };
 
@@ -752,6 +767,7 @@ struct FenBatchStream : Stream<FenBatch>
         // set expected number of active workers so the consumer wait
         // predicate can determine when workers have all finished.
         m_num_workers.store(num_feature_threads);
+        fprintf(stderr, "[DBG] FenBatchStream initialised with num_feature_threads=%d\n", num_feature_threads);
         for (int i = 0; i < num_feature_threads; ++i)
         {
             m_workers.emplace_back(worker);
