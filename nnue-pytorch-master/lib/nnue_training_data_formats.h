@@ -7763,6 +7763,7 @@ namespace binpack
             m_fileChunkReads.resize(m_inputFiles.size());
             m_fileEntryCounts.resize(m_inputFiles.size());
             m_fileFlushes.resize(m_inputFiles.size());
+            m_fileDead.resize(m_inputFiles.size(), false);
 
             m_stopFlag.store(false);
 
@@ -8027,6 +8028,7 @@ namespace binpack
         std::discrete_distribution<> m_inputFileDistribution;
         std::atomic_int m_numRunningWorkers;
         std::vector<std::size_t> m_fileChunkReads;
+        std::vector<bool> m_fileDead;
         std::vector<std::size_t> m_fileEntryCounts;
         std::vector<std::size_t> m_fileFlushes;
         std::mutex m_countsMutex;
@@ -8051,46 +8053,55 @@ namespace binpack
             if (m_offset + sizeof(PackedTrainingDataEntry) + 2 > m_chunk.size())
             {
                 auto& prng = rng::get_thread_local_rng();
-                const std::size_t fileId = m_inputFileDistribution(prng);
-                auto& inputFile = m_inputFiles[fileId];
-
-                std::unique_lock lock(m_fileMutex);
-                fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader fetchNextChunkIfNeeded selected fileId=%zu path=%s offset=%zu hasNext=%d\n", fileId, inputFile.path().c_str(), inputFile.readOffset(), (int)inputFile.hasNextChunk());
-
-                if (!inputFile.hasNextChunk())
+                const size_t fileCount = m_inputFiles.size();
+                size_t tries = 0;
+                bool found = false;
+                size_t fileId = 0;
+                for (; tries < fileCount; ++tries)
                 {
-                    if (m_cyclic)
+                    fileId = m_inputFileDistribution(prng);
+                    if (m_fileDead[fileId]) continue;
+                    auto& inputFile = m_inputFiles[fileId];
+
+                    std::unique_lock lock(m_fileMutex);
+                    fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader fetchNextChunkIfNeeded selected fileId=%zu path=%s offset=%zu hasNext=%d\n", fileId, inputFile.path().c_str(), inputFile.readOffset(), (int)inputFile.hasNextChunk());
+
+                    if (!inputFile.hasNextChunk())
                     {
-                        inputFile.seek_to_start();
+                        if (m_cyclic)
+                        {
+                            inputFile.seek_to_start();
+                        }
+                        else
+                        {
+                            fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader fetchNextChunkIfNeeded: fileId=%zu path=%s has no chunks (m_readOffset=%zu), marking as dead for this worker\n", fileId, inputFile.path().c_str(), inputFile.readOffset());
+                            m_fileDead[fileId] = true;
+                            continue;
+                        }
                     }
-                    else
+
+                    try
                     {
-                        fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader fetchNextChunkIfNeeded: fileId=%zu path=%s has no chunks (m_readOffset=%zu), treating as EOF for this worker\n", fileId, inputFile.path().c_str(), inputFile.readOffset());
-                        return true;
+                        m_chunk = inputFile.readNextChunk();
+                        found = true;
+                        if (outFileId) *outFileId = fileId;
+                        {
+                            std::lock_guard lock(m_countsMutex);
+                            m_fileChunkReads[fileId] += 1;
+                        }
+                        m_offset = 0;
+                        break;
+                    }
+                    catch (const std::exception& e)
+                    {
+                        fprintf(stderr, "[ERR] CompressedTrainingDataEntryParallelReader fetchNextChunkIfNeeded caught exception when reading fileId=%zu path=%s: %s\n", fileId, inputFile.path().c_str(), e.what());
+                        m_fileDead[fileId] = true;
+                        continue;
                     }
                 }
-
-                try
+                if (!found)
                 {
-                    m_chunk = inputFile.readNextChunk();
-                    if (outFileId) *outFileId = fileId;
-                    {
-                        std::lock_guard lock(m_countsMutex);
-                        m_fileChunkReads[fileId] += 1;
-                    }
-                    m_offset = 0;
-                }
-                catch (const std::exception& e)
-                {
-                    fprintf(stderr, "[ERR] CompressedTrainingDataEntryParallelReader fetchNextChunkIfNeeded caught exception when reading fileId=%zu path=%s: %s\n", fileId, inputFile.path().c_str(), e.what());
-                    // If read failed treat file as ended for this worker and
-                    // continue with other files if cyclic; otherwise signal
-                    // stream end.
-                    if (m_cyclic) {
-                        inputFile.seek_to_start();
-                    } else {
-                        return true;
-                    }
+                    return true;
                 }
             }
 
