@@ -6852,17 +6852,40 @@ namespace binpack
     private:
         static Header readChunkHeader(std::ifstream& in)
         {
-            Header h;
-            in.read(reinterpret_cast<char*>(&h), sizeof(Header));
-            if (!in || in.gcount() < static_cast<std::streamsize>(sizeof(Header)))
+            unsigned char header[8];
+            in.read(reinterpret_cast<char*>(header), 8);
+            if (!in || in.gcount() < 8)
             {
                 throw std::runtime_error("Failed to read chunk header; file may be corrupted or truncated");
             }
+
+            if (header[0] != 'B' || header[1] != 'I' || header[2] != 'N' || header[3] != 'P')
+            {
+                throw std::runtime_error(std::string("Invalid binpack file header; expected 'BINP' but got: ") + std::string(reinterpret_cast<char*>(header), 4));
+            }
+
+            const std::uint32_t size =
+                header[4]
+                | (header[5] << 8)
+                | (header[6] << 16)
+                | (header[7] << 24);
+
+            Header h;
+            h.chunkSize = size;
             return h;
         }
         static void writeChunkHeader(std::ofstream& out, Header h)
         {
-            out.write(reinterpret_cast<const char*>(&h), sizeof(Header));
+            unsigned char header[8];
+            header[0] = 'B';
+            header[1] = 'I';
+            header[2] = 'N';
+            header[3] = 'P';
+            header[4] = h.chunkSize;
+            header[5] = h.chunkSize >> 8;
+            header[6] = h.chunkSize >> 16;
+            header[7] = h.chunkSize >> 24;
+            out.write(reinterpret_cast<const char*>(header), 8);
         }
 
     private:
