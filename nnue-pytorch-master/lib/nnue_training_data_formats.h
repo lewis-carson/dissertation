@@ -6821,8 +6821,16 @@ namespace binpack
             in.seekg(m_readOffset, std::ifstream::beg);
             Header h = readChunkHeader(in);
             auto size = h.chunkSize;
+            if (size > m_sizeBytes)
+            {
+                throw std::runtime_error(std::string("Invalid chunk size >= file size in readNextChunk: ") + m_path + " offset=" + std::to_string(m_readOffset));
+            }
             std::vector<unsigned char> data(size);
             in.read(reinterpret_cast<char*>(data.data()), size);
+            if (!in || in.gcount() < static_cast<std::streamsize>(size))
+            {
+                throw std::runtime_error(std::string("Failed to read chunk payload: ") + m_path + " offset=" + std::to_string(m_readOffset) + " expected=" + std::to_string(size) + " got=" + std::to_string(in.gcount()));
+            }
             // advance offset by header size + payload
             m_readOffset += sizeof(Header) + size;
             return data;
@@ -6832,12 +6840,24 @@ namespace binpack
         {
             return m_sizeBytes;
         }
+        [[nodiscard]] const std::string& path() const
+        {
+            return m_path;
+        }
+        [[nodiscard]] std::size_t readOffset() const
+        {
+            return m_readOffset;
+        }
         
     private:
         static Header readChunkHeader(std::ifstream& in)
         {
             Header h;
             in.read(reinterpret_cast<char*>(&h), sizeof(Header));
+            if (!in || in.gcount() < static_cast<std::streamsize>(sizeof(Header)))
+            {
+                throw std::runtime_error("Failed to read chunk header; file may be corrupted or truncated");
+            }
             return h;
         }
         static void writeChunkHeader(std::ofstream& out, Header h)
@@ -7570,7 +7590,17 @@ namespace binpack
             }
             else
             {
-                m_chunk = m_inputFile.readNextChunk();
+                try
+                {
+                    m_chunk = m_inputFile.readNextChunk();
+                }
+                catch (const std::exception& e)
+                {
+                    fprintf(stderr, "[ERR] CompressedTrainingDataEntryReader constructor caught exception reading initial chunk for %s: %s\n", path.c_str(), e.what());
+                    m_isEnd = true;
+                    m_chunk.clear();
+                    m_offset = 0;
+                }
             }
         }
 
@@ -7644,8 +7674,18 @@ namespace binpack
             {
                 if (m_inputFile.hasNextChunk())
                 {
-                    m_chunk = m_inputFile.readNextChunk();
-                    m_offset = 0;
+                    try
+                    {
+                        m_chunk = m_inputFile.readNextChunk();
+                        m_offset = 0;
+                    }
+                    catch (const std::exception& e)
+                    {
+                        fprintf(stderr, "[ERR] CompressedTrainingDataEntryReader::fetchNextChunkIfNeeded caught exception: %s\n", e.what());
+                        m_isEnd = true;
+                        m_chunk.clear();
+                        m_offset = 0;
+                    }
                 }
                 else
                 {
@@ -7706,9 +7746,18 @@ namespace binpack
                 std::vector<TrainingDataEntry> m_localBuffer;
                 m_localBuffer.reserve(threadBufferSize);
 
-                bool isEnd = fetchNextChunkIfNeeded(m_offset, m_chunk);
+                bool isEnd = false;
+                try {
+                    isEnd = fetchNextChunkIfNeeded(m_offset, m_chunk);
+                } catch (const std::exception& e) {
+                    fprintf(stderr, "[ERR] CompressedTrainingDataEntryParallelReader worker (thread=%zu) exception on initial fetchNextChunkIfNeeded: %s\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), e.what());
+                    m_numRunningWorkers.fetch_sub(1);
+                    m_waitingBufferFull.notify_one();
+                    return;
+                }
                 fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader worker (thread=%zu) starting loop; isEnd=%d\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), isEnd);
 
+                try {
                 while(!isEnd && !m_stopFlag.load())
                 {
                     while (m_localBuffer.size() < threadBufferSize)
@@ -7730,10 +7779,18 @@ namespace binpack
                         }
                         else
                         {
+                            if (m_offset + sizeof(PackedTrainingDataEntry) > m_chunk.size())
+                            {
+                                throw std::runtime_error("Corrupted binpack: not enough data for PackedTrainingDataEntry in chunk (parallel reader)");
+                            }
                             PackedTrainingDataEntry packed;
                             std::memcpy(&packed, m_chunk.data() + m_offset, sizeof(PackedTrainingDataEntry));
                             m_offset += sizeof(PackedTrainingDataEntry);
 
+                            if (m_offset + 2 > m_chunk.size())
+                            {
+                                throw std::runtime_error("Corrupted binpack: not enough data for numPlies field in chunk (parallel reader)");
+                            }
                             const std::uint16_t numPlies = (m_chunk[m_offset] << 8) | m_chunk[m_offset + 1];
                             m_offset += 2;
 
@@ -7774,6 +7831,11 @@ namespace binpack
 
                         m_localBuffer.clear();
                     }
+                }
+
+                }
+                catch (const std::exception& e) {
+                    fprintf(stderr, "[ERR] CompressedTrainingDataEntryParallelReader worker (thread=%zu) caught exception: %s\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), e.what());
                 }
 
                 m_numRunningWorkers.fetch_sub(1);
@@ -7900,6 +7962,7 @@ namespace binpack
                 auto& inputFile = m_inputFiles[fileId];
 
                 std::unique_lock lock(m_fileMutex);
+                fprintf(stderr, "[DBG] CompressedTrainingDataEntryParallelReader fetchNextChunkIfNeeded selected fileId=%zu path=%s offset=%zu hasNext=%d\n", fileId, inputFile.path().c_str(), inputFile.readOffset(), (int)inputFile.hasNextChunk());
 
                 if (!inputFile.hasNextChunk())
                 {
@@ -7911,8 +7974,23 @@ namespace binpack
                         return true;
                 }
 
-                m_chunk = inputFile.readNextChunk();
-                m_offset = 0;
+                try
+                {
+                    m_chunk = inputFile.readNextChunk();
+                    m_offset = 0;
+                }
+                catch (const std::exception& e)
+                {
+                    fprintf(stderr, "[ERR] CompressedTrainingDataEntryParallelReader fetchNextChunkIfNeeded caught exception when reading fileId=%zu path=%s: %s\n", fileId, inputFile.path().c_str(), e.what());
+                    // If read failed treat file as ended for this worker and
+                    // continue with other files if cyclic; otherwise signal
+                    // stream end.
+                    if (m_cyclic) {
+                        inputFile.seek_to_start();
+                    } else {
+                        return true;
+                    }
+                }
             }
 
             return false;

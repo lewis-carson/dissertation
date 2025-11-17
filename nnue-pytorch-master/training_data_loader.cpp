@@ -529,6 +529,8 @@ struct FeaturedBatchStream : Stream<StorageT>
             std::vector<TrainingDataEntry> entries;
             entries.reserve(m_batch_size);
 
+            try {
+            try {
             while(!m_stop_flag.load())
             {
                 entries.clear();
@@ -558,7 +560,11 @@ struct FeaturedBatchStream : Stream<StorageT>
                 }
 
             }
-            m_num_workers.fetch_sub(1);
+        }
+        catch (const std::exception& e) {
+            fprintf(stderr, "[ERR] FeaturedBatchStream worker (thread=%zu) caught exception: %s\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), e.what());
+        }
+        m_num_workers.fetch_sub(1);
             fprintf(stderr, "[DBG] FeaturedBatchStream worker (thread=%zu) exiting; num_workers=%d\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), m_num_workers.load());
             m_batches_any.notify_one();
         };
@@ -754,6 +760,11 @@ struct FenBatchStream : Stream<FenBatch>
                 }
 
             }
+            }
+            catch (const std::exception& e) {
+                fprintf(stderr, "[ERR] FenBatchStream worker (thread=%zu) caught exception: %s\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), e.what());
+            }
+
             m_num_workers.fetch_sub(1);
             fprintf(stderr, "[DBG] FenBatchStream worker (thread=%zu) exiting; num_workers=%d\n", std::hash<std::thread::id>{}(std::this_thread::get_id()), m_num_workers.load());
             m_batches_any.notify_one();
