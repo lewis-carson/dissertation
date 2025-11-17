@@ -7743,15 +7743,14 @@ namespace binpack
                 m_waitingBufferFull.notify_one();
             };
 
+            // set expected number of running worker threads before launch
+            // to avoid races where a worker could finish before the
+            // main thread increments the counter, which would cause
+            // underflow and potential deadlocks for consumers.
+            m_numRunningWorkers.store(concurrency);
             for (int i = 0; i < concurrency; ++i)
             {
                 m_workers.emplace_back(worker);
-
-                // This cannot be done in the thread worker. We need
-                // to have a guarantee that this is incremented, but if
-                // we did it in the worker there's no guarantee
-                // that it executed.
-                m_numRunningWorkers.fetch_add(1);
             }
         }
 

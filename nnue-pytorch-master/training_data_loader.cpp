@@ -561,15 +561,12 @@ struct FeaturedBatchStream : Stream<StorageT>
             concurrency - std::max(1, concurrency / num_feature_threads_per_reading_thread)
         );
 
+        // set expected number of active workers so the consumer wait
+        // predicate can determine when workers have all finished.
+        m_num_workers.store(num_feature_threads);
         for (int i = 0; i < num_feature_threads; ++i)
         {
             m_workers.emplace_back(worker);
-
-            // This cannot be done in the thread worker. We need
-            // to have a guarantee that this is incremented, but if
-            // we did it in the worker there's no guarantee
-            // that it executed.
-            m_num_workers.fetch_add(1);
         }
     }
 
@@ -752,15 +749,12 @@ struct FenBatchStream : Stream<FenBatch>
             concurrency - std::max(1, concurrency / num_feature_threads_per_reading_thread)
         );
 
+        // set expected number of active workers so the consumer wait
+        // predicate can determine when workers have all finished.
+        m_num_workers.store(num_feature_threads);
         for (int i = 0; i < num_feature_threads; ++i)
         {
             m_workers.emplace_back(worker);
-
-            // This cannot be done in the thread worker. We need
-            // to have a guarantee that this is incremented, but if
-            // we did it in the worker there's no guarantee
-            // that it executed.
-            m_num_workers.fetch_add(1);
         }
     }
 
