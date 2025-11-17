@@ -7649,14 +7649,21 @@ namespace binpack
             std::vector<double> sizes; // discrete distribution wants double weights
             for (const auto& path : paths)
             {
-                auto& file = m_inputFiles.emplace_back(path, om | std::ios_base::in);
-
-                if (!file.hasNextChunk())
+                CompressedTrainingDataFile inputFile(path, om | std::ios_base::in);
+                if (!inputFile.hasNextChunk())
                 {
-                    return;
+                    fprintf(stderr, "[WARN] CompressedTrainingDataEntryParallelReader: skipping file with no chunks: %s\n", path.c_str());
+                    continue;
                 }
 
-                sizes.emplace_back(static_cast<double>(file.sizeBytes()));
+                m_inputFiles.emplace_back(std::move(inputFile));
+                sizes.emplace_back(static_cast<double>(m_inputFiles.back().sizeBytes()));
+            }
+
+            if (sizes.empty())
+            {
+                fprintf(stderr, "[ERROR] CompressedTrainingDataEntryParallelReader: no valid input files; reader will not spawn workers.\n");
+                return;
             }
 
             m_inputFileDistribution = std::discrete_distribution<>(sizes.begin(), sizes.end());
