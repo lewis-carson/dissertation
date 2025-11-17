@@ -8,7 +8,7 @@ from train import create_sparse_dataloader, DataloaderSkipConfig
 def run_test(batch_size=1024, concurrency=4, max_batches=200, cyclic=False):
     data_dir = Path(__file__).resolve().parent.parent / "data"
     print(data_dir)
-    binpack_paths = [str(p) for p in data_dir.glob("*.binpack")]
+    binpack_paths = [str(p) for p in data_dir.rglob("*.binpack")]
     print(f"Using files: {binpack_paths}")
     skip_config = DataloaderSkipConfig()
 
