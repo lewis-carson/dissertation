@@ -4,7 +4,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 import chess
 import numpy as np
@@ -12,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset, IterableDataset
+from torch.amp import GradScaler, autocast
 import wandb
 
 import binpack_loader
@@ -22,6 +23,24 @@ NUM_SQUARES = 64
 NUM_PIECE_TYPES = 10  # 5 piece types (P, N, B, R, Q) * 2 colours, kings excluded
 NUM_PLANES = NUM_SQUARES * NUM_PIECE_TYPES + 1  # extra plane for bias bucket
 HALFKP_FEATURES = NUM_PLANES * NUM_SQUARES  # 64 * (64 * 10 + 1) = 41_024
+
+
+def _get_env_value(name: str, default, cast_func):
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return cast_func(raw)
+    except (TypeError, ValueError):
+        print(f"Ignoring invalid value for {name}: {raw}")
+        return default
+
+
+def _get_env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def orient(is_white_pov: bool, square: int) -> int:
@@ -127,6 +146,7 @@ class SparseBatchIterableDataset(IterableDataset):
         skip_config: DataloaderSkipConfig,
         cyclic: bool,
         num_workers: int,
+        device: torch.device | None = None,
     ):
         super().__init__()
         self.feature_set = feature_set
@@ -135,6 +155,7 @@ class SparseBatchIterableDataset(IterableDataset):
         self.skip_config = skip_config
         self.cyclic = cyclic
         self.num_workers = num_workers
+        self.device = device or torch.device("cpu")
 
     def __iter__(self):
         if not self.filenames:
@@ -149,7 +170,7 @@ class SparseBatchIterableDataset(IterableDataset):
             num_workers=max(1, self.num_workers),
         )
 
-        device = torch.device("cpu")
+        device = self.device
         batch_count = 0
 
         while True:
@@ -263,6 +284,7 @@ def create_sparse_dataloader(
     skip_config: DataloaderSkipConfig,
     num_workers: int = 0,
     cyclic: bool = False,
+    device: Optional[torch.device] = None,
 ):
     """Build a DataLoader backed by the Rust sparse pipeline exposed via PyO3."""
 
@@ -274,6 +296,7 @@ def create_sparse_dataloader(
         skip_config=skip_config,
         cyclic=cyclic,
         num_workers=num_workers,
+        device=device,
     )
 
     return DataLoader(dataset, batch_size=None)
@@ -394,6 +417,9 @@ def train_epoch(
     epoch_idx: int,
     total_epochs: int,
     is_streaming: bool = False,
+    use_amp: bool = False,
+    grad_accum_steps: int = 1,
+    log_gpu_memory: bool = False,
 ):
     """Train for one epoch using nnue-pytorch style blended loss."""
 
@@ -405,38 +431,59 @@ def train_epoch(
 
     epoch_progress = epoch_idx / max(1, total_epochs - 1)
 
+    scaler = GradScaler(enabled=use_amp)
+    optimizer.zero_grad(set_to_none=True)
+    grad_accum_steps = max(1, grad_accum_steps)
+
+    def _optimizer_step():
+        if use_amp:
+            scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        if use_amp:
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+
     for batch_idx, batch in enumerate(dataloader):
-        #print("starting batch")
         batch_start_time = time.time()
 
         prepared = prepare_sparse_batch(batch, device)
 
-        optimizer.zero_grad()
-        predictions = model(
-            prepared.white_indices,
-            prepared.white_offsets,
-            prepared.black_indices,
-            prepared.black_offsets,
-            prepared.white_weights,
-            prepared.black_weights,
-        )
+        amp_enabled = use_amp and device.type == "cuda"
+        amp_device_type = "cuda" if device.type == "cuda" else "cpu"
+        with autocast(amp_device_type, enabled=amp_enabled):
+            predictions = model(
+                prepared.white_indices,
+                prepared.white_offsets,
+                prepared.black_indices,
+                prepared.black_offsets,
+                prepared.white_weights,
+                prepared.black_weights,
+            )
 
-        loss = compute_loss(
-            predictions,
-            prepared.scores,
-            prepared.outcomes,
-            loss_params,
-            epoch_progress,
-        )
+            loss = compute_loss(
+                predictions,
+                prepared.scores,
+                prepared.outcomes,
+                loss_params,
+                epoch_progress,
+            )
 
         if not torch.isfinite(loss):
             print(f"  Warning: Non-finite loss at batch {batch_idx}, skipping...")
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             continue
 
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
+        scaled_loss = loss / grad_accum_steps
+        if use_amp:
+            scaler.scale(scaled_loss).backward()
+        else:
+            scaled_loss.backward()
+
+        if (batch_idx + 1) % grad_accum_steps == 0:
+            _optimizer_step()
 
         total_loss += loss.item()
         num_batches += 1
@@ -446,14 +493,20 @@ def train_epoch(
         batch_size = prepared.size
         samples_per_sec = batch_size / batch_time if batch_time > 0 else 0
 
-        wandb.log(
-            {
-                "batch_loss": loss.item(),
-                "batch": batch_idx,
-                "batch_time_sec": batch_time,
-                "samples_per_sec": samples_per_sec,
-            }
-        )
+        log_payload = {
+            "batch_loss": loss.item(),
+            "batch": batch_idx,
+            "batch_time_sec": batch_time,
+            "samples_per_sec": samples_per_sec,
+        }
+        if log_gpu_memory and device.type == "cuda":
+            log_payload.update(
+                {
+                    "gpu_mem_allocated_mb": torch.cuda.memory_allocated(device) / 1024 ** 2,
+                    "gpu_mem_reserved_mb": torch.cuda.memory_reserved(device) / 1024 ** 2,
+                }
+            )
+        wandb.log(log_payload)
 
         if num_batches % 100 == 0 or batch_idx % 500 == 0:
             avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
@@ -483,6 +536,9 @@ def train_epoch(
                     flush=True
                 )
         #print("batch done")
+
+    if num_batches % grad_accum_steps != 0:
+        _optimizer_step()
 
     epoch_duration = time.time() - epoch_start_time
     wandb.log({"epoch_time_sec": epoch_duration})
@@ -533,17 +589,27 @@ def main():
     parser.add_argument('data_dir', nargs='?', help='Directory containing binpack training data')
     args = parser.parse_args()
     
-    # Hyperparameters
-    BATCH_SIZE = 16384
-    LEARNING_RATE = 8.75e-4
-    NUM_EPOCHS = 600
-    GAMMA = 0.992
-    NUM_WORKERS = 4
-    THREADS = 2
-    NETWORK_SAVE_PERIOD = 10
-    START_LAMBDA = 1.0
-    END_LAMBDA = 0.75
-    RANDOM_FEN_SKIPPING = 0
+    # Hyperparameters (env override friendly)
+    BATCH_SIZE = _get_env_value("BATCH_SIZE", 16384, int)
+    LEARNING_RATE = _get_env_value("LEARNING_RATE", 8.75e-4, float)
+    NUM_EPOCHS = _get_env_value("NUM_EPOCHS", 600, int)
+    GAMMA = _get_env_value("GAMMA", 0.992, float)
+    NUM_WORKERS = max(0, _get_env_value("NUM_WORKERS", 4, int))
+    THREADS = max(0, _get_env_value("THREADS", 4, int))
+    NETWORK_SAVE_PERIOD = _get_env_value("NETWORK_SAVE_PERIOD", 10, int)
+    START_LAMBDA = _get_env_value("START_LAMBDA", 1.0, float)
+    END_LAMBDA = _get_env_value("END_LAMBDA", 0.75, float)
+    RANDOM_FEN_SKIPPING = max(0, _get_env_value("RANDOM_FEN_SKIPPING", 0, int))
+    GRAD_ACCUM_STEPS = max(1, _get_env_value("ACCUM_STEPS", 1, int))
+    USE_AMP = _get_env_flag("USE_AMP", True)
+    LOG_GPU_MEMORY = _get_env_flag("LOG_GPU_MEMORY", False)
+
+    if BATCH_SIZE <= 0:
+        raise ValueError("BATCH_SIZE must be positive")
+    if NUM_EPOCHS <= 0:
+        raise ValueError("NUM_EPOCHS must be positive")
+    if NETWORK_SAVE_PERIOD is not None and NETWORK_SAVE_PERIOD <= 0:
+        NETWORK_SAVE_PERIOD = None
     
     # Device - prioritize Metal (MPS) for Mac, then CUDA, then CPU
     if torch.cuda.is_available():
@@ -565,8 +631,37 @@ def main():
         print("Using device: CPU")
     print(f"Device: {device}")
 
+    if device.type == 'cuda':
+        torch.cuda.set_device(device)
+
+    use_amp = USE_AMP and device.type == 'cuda'
+    if USE_AMP and not use_amp:
+        print("AMP requested but CUDA is unavailable; running without mixed precision.")
+
+    initial_device_stats = {}
+    if device.type == 'cuda' and LOG_GPU_MEMORY:
+        cuda_index = device.index if device.index is not None else torch.cuda.current_device()
+        props = torch.cuda.get_device_properties(cuda_index)
+        initial_device_stats = {
+            "gpu_name": props.name,
+            "gpu_total_memory_gb": props.total_memory / (1024 ** 3),
+        }
+        alloc_mb = torch.cuda.memory_allocated(device) / (1024 ** 2)
+        reserved_mb = torch.cuda.memory_reserved(device) / (1024 ** 2)
+        print(
+            f"GPU memory (visible): {props.total_memory / (1024 ** 3):.2f} GB | "
+            f"allocated {alloc_mb:.1f} MB | reserved {reserved_mb:.1f} MB"
+        )
+
     if THREADS > 0:
+        os.environ.setdefault("OMP_NUM_THREADS", str(THREADS))
+        os.environ.setdefault("MKL_NUM_THREADS", str(THREADS))
+        os.environ.setdefault("NUMEXPR_NUM_THREADS", str(THREADS))
         torch.set_num_threads(THREADS)
+        try:
+            torch.set_num_interop_threads(max(1, THREADS // 2))
+        except RuntimeError:
+            pass
     
     # Data directory - use argument or default
     if args.data_dir:
@@ -621,6 +716,7 @@ def main():
         skip_config=val_skip_config,
         num_workers=NUM_WORKERS,
         cyclic=False,
+        device=device,
     )
 
     print("\nCreating sparse training dataloader backed by C++ reader...")
@@ -630,6 +726,7 @@ def main():
         skip_config=train_skip_config,
         num_workers=NUM_WORKERS,
         cyclic=False,
+        device=device,
     )
     
     # Initialize model
@@ -659,8 +756,13 @@ def main():
             "device": str(device),
             "num_binpack_files": len(binpack_paths),
             "data_dir": str(data_dir),
+            "accum_steps": GRAD_ACCUM_STEPS,
+            "use_amp": use_amp,
+            "log_gpu_memory": LOG_GPU_MEMORY,
         }
     )
+    if initial_device_stats:
+        wandb.log(initial_device_stats)
     
     # Training loop
     print("\nStarting training with streaming dataset...")
@@ -679,6 +781,9 @@ def main():
             epoch,
             NUM_EPOCHS,
             is_streaming=True,
+            use_amp=use_amp,
+            grad_accum_steps=GRAD_ACCUM_STEPS,
+            log_gpu_memory=LOG_GPU_MEMORY,
         )
         val_loss = validate(
             model,
@@ -708,7 +813,7 @@ def main():
         scheduler.step()
         
         # Save checkpoint
-        if (epoch + 1) % 5 == 0:
+        if NETWORK_SAVE_PERIOD and (epoch + 1) % NETWORK_SAVE_PERIOD == 0:
             checkpoint_path = Path(__file__).parent / f"halfkp_epoch_{epoch+1}.pt"
             torch.save({
                 'epoch': epoch,
