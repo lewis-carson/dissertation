@@ -2,6 +2,7 @@ data-hf/test80_full_data
 data/
 binpack-rust-main/.cargo/
 binpack-rust-main/target/
+binpack-rust-main/Cargo.lock
 .venv/
 wandb/
 halfkp/training_data_loader.dylib

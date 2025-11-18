@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::io::{self};
 use thiserror::Error;
+use core::mem::size_of;
 
 use crate::{
     chess::{position::Position, r#move::Move},
