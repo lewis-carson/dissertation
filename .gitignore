@@ -9,3 +9,4 @@ halfkp/training_data_loader.dylib
 halfkp/training_data_loader.so
 halfkp/training_data_loader.dll
 halfkp/halfkp_epoch_*
+binpack-rust-main/pybinpack/target/

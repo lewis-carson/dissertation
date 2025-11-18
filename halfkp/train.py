@@ -1,10 +1,6 @@
 import argparse
-import ctypes
-import math
 import os
-import queue
 import sys
-import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +13,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 import wandb
+
+import binpack_loader
 
 
 # HalfKP feature dimensions (matching nnue-pytorch reference implementation)
@@ -37,13 +35,6 @@ def halfkp_index(is_white_pov: bool, king_bucket: int, square: int, piece: chess
     return 1 + orient(is_white_pov, square) + piece_index * NUM_SQUARES + king_bucket * NUM_PLANES
 
 
-LIB_CANDIDATES = [
-    "training_data_loader.dylib",
-    "training_data_loader.so",
-    "training_data_loader.dll",
-]
-
-
 @dataclass
 class DataloaderSkipConfig:
     filtered: bool = False
@@ -53,74 +44,15 @@ class DataloaderSkipConfig:
     simple_eval_skipping: int = -1
     param_index: int = 0
 
-
-class CDataloaderSkipConfig(ctypes.Structure):
-    _fields_ = [
-        ("filtered", ctypes.c_bool),
-        ("random_fen_skipping", ctypes.c_int),
-        ("wld_filtered", ctypes.c_bool),
-        ("early_fen_skipping", ctypes.c_int),
-        ("simple_eval_skipping", ctypes.c_int),
-        ("param_index", ctypes.c_int),
-    ]
-
-    def __init__(self, config: DataloaderSkipConfig):
-        super().__init__(
-            filtered=config.filtered,
-            random_fen_skipping=config.random_fen_skipping,
-            wld_filtered=config.wld_filtered,
-            early_fen_skipping=config.early_fen_skipping,
-            simple_eval_skipping=config.simple_eval_skipping,
-            param_index=config.param_index,
-        )
-
-
-def _load_training_library():
-    base_dir = Path(__file__).resolve().parent
-    for candidate_name in LIB_CANDIDATES:
-        candidate_path = base_dir / candidate_name
-        if candidate_path.exists():
-            return ctypes.cdll.LoadLibrary(str(candidate_path))
-    raise FileNotFoundError(
-        f"training_data_loader library not found next to {__file__}. Expected one of: {', '.join(LIB_CANDIDATES)}"
-    )
-
-
-def _init_training_library():
-    library = _load_training_library()
-
-    library.create_sparse_batch_stream.restype = ctypes.c_void_p
-    library.create_sparse_batch_stream.argtypes = [
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.POINTER(ctypes.c_char_p),
-        ctypes.c_int,
-        ctypes.c_bool,
-        CDataloaderSkipConfig,
-    ]
-
-    library.destroy_sparse_batch_stream.argtypes = [ctypes.c_void_p]
-
-    library.fetch_next_sparse_batch.restype = ctypes.c_void_p
-    library.fetch_next_sparse_batch.argtypes = [ctypes.c_void_p]
-
-    library.destroy_sparse_batch.argtypes = [ctypes.c_void_p]
-
-    library.get_sparse_batch_from_fens.restype = ctypes.c_void_p
-    library.get_sparse_batch_from_fens.argtypes = [
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.POINTER(ctypes.c_char_p),
-        ctypes.POINTER(ctypes.c_int),
-        ctypes.POINTER(ctypes.c_int),
-        ctypes.POINTER(ctypes.c_int),
-    ]
-
-    return library
-
-
-TRAINING_LIB = _init_training_library()
+    def to_dict(self) -> dict:
+        return {
+            "filtered": self.filtered,
+            "random_fen_skipping": self.random_fen_skipping,
+            "wld_filtered": self.wld_filtered,
+            "early_fen_skipping": self.early_fen_skipping,
+            "simple_eval_skipping": self.simple_eval_skipping,
+            "param_index": self.param_index,
+        }
 
 
 @dataclass
@@ -135,141 +67,55 @@ class LossParams:
     qp_asymmetry: float = 0.0
 
 
-class SparseBatch(ctypes.Structure):
-    _fields_ = [
-        ("num_inputs", ctypes.c_int),
-        ("size", ctypes.c_int),
-        ("is_white", ctypes.POINTER(ctypes.c_float)),
-        ("outcome", ctypes.POINTER(ctypes.c_float)),
-        ("score", ctypes.POINTER(ctypes.c_float)),
-        ("num_active_white_features", ctypes.c_int),
-        ("num_active_black_features", ctypes.c_int),
-        ("max_active_features", ctypes.c_int),
-        ("white", ctypes.POINTER(ctypes.c_int)),
-        ("black", ctypes.POINTER(ctypes.c_int)),
-        ("white_values", ctypes.POINTER(ctypes.c_float)),
-        ("black_values", ctypes.POINTER(ctypes.c_float)),
-        ("psqt_indices", ctypes.POINTER(ctypes.c_int)),
-        ("layer_stack_indices", ctypes.POINTER(ctypes.c_int)),
-    ]
+def _tensor_from_numpy(array: np.ndarray, device: torch.device, *, dtype=None) -> torch.Tensor:
+    tensor = torch.from_numpy(array)
+    if dtype is not None:
+        tensor = tensor.to(dtype=dtype)
 
-    def get_tensors(self, device: torch.device):
-        def _move(tensor: torch.Tensor) -> torch.Tensor:
-            if device.type == "cuda":
-                return tensor.pin_memory().to(device=device, non_blocking=True)
-            if device.type == "cpu":
-                return tensor.clone()
-            return tensor.to(device=device)
-
-        white_values = _move(
-            torch.from_numpy(
-                np.ctypeslib.as_array(
-                    self.white_values, shape=(self.size, self.max_active_features)
-                )
-            )
-        )
-        black_values = _move(
-            torch.from_numpy(
-                np.ctypeslib.as_array(
-                    self.black_values, shape=(self.size, self.max_active_features)
-                )
-            )
-        )
-        white_indices = _move(
-            torch.from_numpy(
-                np.ctypeslib.as_array(
-                    self.white, shape=(self.size, self.max_active_features)
-                )
-            ).to(dtype=torch.long, copy=True)
-        )
-        black_indices = _move(
-            torch.from_numpy(
-                np.ctypeslib.as_array(
-                    self.black, shape=(self.size, self.max_active_features)
-                )
-            ).to(dtype=torch.long, copy=True)
-        )
-        us = _move(
-            torch.from_numpy(
-                np.ctypeslib.as_array(self.is_white, shape=(self.size, 1))
-            )
-        )
-        them = 1.0 - us
-        outcome = _move(
-            torch.from_numpy(
-                np.ctypeslib.as_array(self.outcome, shape=(self.size, 1))
-            )
-        )
-        score = _move(
-            torch.from_numpy(
-                np.ctypeslib.as_array(self.score, shape=(self.size, 1))
-            )
-        )
-        psqt_indices = _move(
-            torch.from_numpy(
-                np.ctypeslib.as_array(self.psqt_indices, shape=(self.size,))
-            ).to(dtype=torch.long, copy=True)
-        )
-        layer_stack_indices = _move(
-            torch.from_numpy(
-                np.ctypeslib.as_array(self.layer_stack_indices, shape=(self.size,))
-            ).to(dtype=torch.long, copy=True)
-        )
-        return (
-            us,
-            them,
-            white_indices,
-            white_values,
-            black_indices,
-            black_values,
-            outcome,
-            score,
-            psqt_indices,
-            layer_stack_indices,
-        )
+    if device.type == "cuda":
+        return tensor.pin_memory().to(device=device, non_blocking=True)
+    if device.type == "cpu":
+        return tensor.clone()
+    return tensor.to(device=device)
 
 
-def _to_c_str_array(items):
-    arr = (ctypes.c_char_p * len(items))()
-    arr[:] = [s.encode("utf-8") for s in items]
-    return arr
+def _convert_numpy_batch_to_tensors(batch, device: torch.device):
+    (
+        us_np,
+        them_np,
+        white_idx_np,
+        white_vals_np,
+        black_idx_np,
+        black_vals_np,
+        outcome_np,
+        score_np,
+        psqt_idx_np,
+        layer_stack_np,
+    ) = batch
 
+    us = _tensor_from_numpy(us_np, device, dtype=torch.float32)
+    them = _tensor_from_numpy(them_np, device, dtype=torch.float32)
+    white_indices = _tensor_from_numpy(white_idx_np, device, dtype=torch.long)
+    white_values = _tensor_from_numpy(white_vals_np, device, dtype=torch.float32)
+    black_indices = _tensor_from_numpy(black_idx_np, device, dtype=torch.long)
+    black_values = _tensor_from_numpy(black_vals_np, device, dtype=torch.float32)
+    outcome = _tensor_from_numpy(outcome_np, device, dtype=torch.float32)
+    score = _tensor_from_numpy(score_np, device, dtype=torch.float32)
+    psqt_indices = _tensor_from_numpy(psqt_idx_np, device, dtype=torch.long)
+    layer_stack_indices = _tensor_from_numpy(layer_stack_np, device, dtype=torch.long)
 
-def create_sparse_batch_stream(
-    feature_set: str,
-    concurrency: int,
-    filenames,
-    batch_size: int,
-    cyclic: bool,
-    config: DataloaderSkipConfig,
-):
-    if len(filenames) == 0:
-        raise ValueError("No binpack files provided to sparse loader")
-    filenames_bytes = _to_c_str_array(filenames)
-    return TRAINING_LIB.create_sparse_batch_stream(
-        feature_set.encode("utf-8"),
-        max(1, concurrency),
-        len(filenames),
-        filenames_bytes,
-        batch_size,
-        bool(cyclic),
-        CDataloaderSkipConfig(config),
+    return (
+        us,
+        them,
+        white_indices,
+        white_values,
+        black_indices,
+        black_values,
+        outcome,
+        score,
+        psqt_indices,
+        layer_stack_indices,
     )
-
-
-def fetch_next_sparse_batch(stream_handle):
-    raw_ptr = TRAINING_LIB.fetch_next_sparse_batch(stream_handle)
-    if not raw_ptr:
-        return None
-    return ctypes.cast(raw_ptr, ctypes.POINTER(SparseBatch))
-
-
-def destroy_sparse_batch(batch_handle):
-    TRAINING_LIB.destroy_sparse_batch(batch_handle)
-
-
-def destroy_sparse_batch_stream(stream_handle):
-    TRAINING_LIB.destroy_sparse_batch_stream(stream_handle)
 
 
 class SparseBatchIterableDataset(IterableDataset):
@@ -291,37 +137,40 @@ class SparseBatchIterableDataset(IterableDataset):
         self.num_workers = num_workers
 
     def __iter__(self):
-        stream = create_sparse_batch_stream(
-            self.feature_set,
-            self.num_workers,
-            self.filenames,
-            self.batch_size,
-            self.cyclic,
-            self.skip_config,
+        if not self.filenames:
+            raise ValueError("No binpack files provided to sparse loader")
+
+        stream = binpack_loader.SparseBatchStream(
+            feature_set=self.feature_set,
+            files=[str(path) for path in self.filenames],
+            batch_size=self.batch_size,
+            skip_config=self.skip_config.to_dict(),
+            cyclic=self.cyclic,
+            num_workers=max(1, self.num_workers),
         )
+
         device = torch.device("cpu")
-        try:
-            batch_count = 0
-            while True:
-                try:
-                    batch_ptr = fetch_next_sparse_batch(stream)
-                except Exception as e:
-                    raise RuntimeError(f"Error fetching batch {batch_count} from C++ dataloader: {e}") from e
-                
-                if batch_ptr is None:
-                    break
-                
-                try:
-                    tensors = batch_ptr.contents.get_tensors(device)
-                except Exception as e:
-                    raise RuntimeError(f"Error converting batch {batch_count} to tensors: {e}") from e
-                finally:
-                    destroy_sparse_batch(batch_ptr)
-                
-                batch_count += 1
-                yield tensors
-        finally:
-            destroy_sparse_batch_stream(stream)
+        batch_count = 0
+
+        while True:
+            try:
+                batch = next(stream)
+            except StopIteration:
+                break
+            except Exception as exc:  # pragma: no cover - defensive path
+                raise RuntimeError(
+                    f"Error fetching batch {batch_count} from Rust dataloader: {exc}"
+                ) from exc
+
+            try:
+                tensors = _convert_numpy_batch_to_tensors(batch, device)
+            except Exception as exc:  # pragma: no cover - defensive path
+                raise RuntimeError(
+                    f"Error converting batch {batch_count} to tensors: {exc}"
+                ) from exc
+
+            batch_count += 1
+            yield tensors
 
 
 @dataclass
@@ -415,7 +264,7 @@ def create_sparse_dataloader(
     num_workers: int = 0,
     cyclic: bool = False,
 ):
-    """Build a DataLoader backed by the nnue-pytorch C++ sparse pipeline."""
+    """Build a DataLoader backed by the Rust sparse pipeline exposed via PyO3."""
 
     files = [str(Path(path)) for path in binpack_files]
     dataset = SparseBatchIterableDataset(
