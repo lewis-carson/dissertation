@@ -15,7 +15,7 @@ const DESIRED_PIECE_COUNT_WEIGHTS: [f64; 33] = [
     1.984375, 1.964844, 1.937500, 1.902344, 1.859375, 1.808594, 1.750000, 1.683594, 1.609375,
     1.527344, 1.437500, 1.339844, 1.234375, 1.121094, 1.000000,
 ];
-const fn sum_weights(weights: &[f64; 33]) -> f64 {
+fn sum_weights(weights: &[f64; 33]) -> f64 {
     let mut idx = 0;
     let mut acc = 0.0;
     while idx < 33 {
@@ -25,7 +25,8 @@ const fn sum_weights(weights: &[f64; 33]) -> f64 {
     acc
 }
 
-const DESIRED_TOTAL: f64 = sum_weights(&DESIRED_PIECE_COUNT_WEIGHTS);
+// DESIRED_TOTAL is computed at runtime to avoid using floating point arithmetic
+// in a const function, which is unstable/unsupported on some Rust versions.
 
 #[derive(Debug, Clone)]
 pub struct SkipConfig {
@@ -67,6 +68,7 @@ pub struct SkipState {
     piece_count_history_all_total: f64,
     piece_count_history_passed_total: f64,
     alpha: f64,
+    desired_total: f64,
     random_skip_probability: f64,
 }
 
@@ -87,6 +89,8 @@ impl SkipState {
             0.0
         };
 
+        let desired_total = sum_weights(&DESIRED_PIECE_COUNT_WEIGHTS);
+
         Self {
             config,
             piece_count_history_all: [0.0; 33],
@@ -94,6 +98,7 @@ impl SkipState {
             piece_count_history_all_total: 0.0,
             piece_count_history_passed_total: 0.0,
             alpha: 1.0,
+            desired_total,
             random_skip_probability,
         }
     }
@@ -146,7 +151,7 @@ impl SkipState {
         self.piece_count_history_all_total += 1.0;
 
         if (self.piece_count_history_all_total as u64) % 10000 == 0 {
-            let mut pass = self.piece_count_history_all_total * DESIRED_TOTAL;
+            let mut pass = self.piece_count_history_all_total * self.desired_total;
             for (idx, weight) in DESIRED_PIECE_COUNT_WEIGHTS.iter().enumerate() {
                 if *weight <= 0.0 {
                     continue;
@@ -155,7 +160,7 @@ impl SkipState {
                 if count <= 0.0 {
                     continue;
                 }
-                let tmp = self.piece_count_history_all_total * weight / (DESIRED_TOTAL * count);
+                let tmp = self.piece_count_history_all_total * weight / (self.desired_total * count);
                 if tmp < pass {
                     pass = tmp;
                 }
@@ -167,7 +172,7 @@ impl SkipState {
         let mut tmp = self.alpha
             * self.piece_count_history_all_total
             * DESIRED_PIECE_COUNT_WEIGHTS[piece_count]
-            / (DESIRED_TOTAL * denom);
+            / (self.desired_total * denom);
         tmp = tmp.clamp(0.0, 1.0);
         let skip_prob = (1.0 - tmp).clamp(0.0, 1.0);
         if rng.gen_bool(skip_prob) {
