@@ -632,7 +632,13 @@ def main():
     print(f"Device: {device}")
 
     if device.type == 'cuda':
-        torch.cuda.set_device(device)
+        # torch.cuda.set_device expects an integer or device index; device may be 'cuda' without index
+        try:
+            cuda_index = device.index if device.index is not None else torch.cuda.current_device()
+            torch.cuda.set_device(cuda_index)
+        except Exception as exc:  # pragma: no cover - defensive safety
+            print(f"Warning: couldn't set cuda device index from device={device}: {exc}")
+            # best effort: don't set device
 
     use_amp = USE_AMP and device.type == 'cuda'
     if USE_AMP and not use_amp:
