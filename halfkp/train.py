@@ -420,6 +420,8 @@ def train_epoch(
     use_amp: bool = False,
     grad_accum_steps: int = 1,
     log_gpu_memory: bool = False,
+    scheduler=None,
+    scheduler_step_per_optim_step: bool = False,
 ):
     """Train for one epoch using nnue-pytorch style blended loss."""
 
@@ -445,6 +447,12 @@ def train_epoch(
         else:
             optimizer.step()
         optimizer.zero_grad(set_to_none=True)
+        # When step-based decay is enabled, advance scheduler on each optimizer step
+        if scheduler is not None and scheduler_step_per_optim_step:
+            try:
+                scheduler.step()
+            except Exception:
+                pass
 
     for batch_idx, batch in enumerate(dataloader):
         batch_start_time = time.time()
@@ -603,6 +611,11 @@ def main():
     GRAD_ACCUM_STEPS = max(1, _get_env_value("ACCUM_STEPS", 1, int))
     USE_AMP = _get_env_flag("USE_AMP", True)
     LOG_GPU_MEMORY = _get_env_flag("LOG_GPU_MEMORY", False)
+    OPTIMIZER = os.environ.get("OPTIMIZER", "adagrad").lower()
+    # Step-based LR decay controls (defaults preserve previous behavior)
+    LR_DECAY_BY_STEPS = _get_env_flag("LR_DECAY_BY_STEPS", False)
+    LR_DECAY_STEP_SIZE = max(1, _get_env_value("LR_DECAY_STEP_SIZE", 1000, int))
+    LR_DECAY_GAMMA = _get_env_value("LR_DECAY_GAMMA", 0.992, float)
 
     if BATCH_SIZE <= 0:
         raise ValueError("BATCH_SIZE must be positive")
@@ -741,8 +754,21 @@ def main():
 
     loss_params = LossParams(start_lambda=START_LAMBDA, end_lambda=END_LAMBDA)
 
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=GAMMA)
+    if OPTIMIZER == "adagrad":
+        optimizer = optim.Adagrad(model.parameters(), lr=LEARNING_RATE)
+    elif OPTIMIZER == "adam":
+        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    else:
+        print(f"Unknown OPTIMIZER={OPTIMIZER}, falling back to Adam")
+        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+    # Scheduler: if LR_DECAY_BY_STEPS then decay every LR_DECAY_STEP_SIZE optimizer steps; otherwise per epoch
+    if LR_DECAY_BY_STEPS:
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=LR_DECAY_STEP_SIZE, gamma=LR_DECAY_GAMMA
+        )
+    else:
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=GAMMA)
     
     # Initialize wandb
     wandb.init(
@@ -764,6 +790,7 @@ def main():
             "data_dir": str(data_dir),
             "accum_steps": GRAD_ACCUM_STEPS,
             "use_amp": use_amp,
+            "optimizer": OPTIMIZER,
             "log_gpu_memory": LOG_GPU_MEMORY,
         }
     )
@@ -790,6 +817,8 @@ def main():
             use_amp=use_amp,
             grad_accum_steps=GRAD_ACCUM_STEPS,
             log_gpu_memory=LOG_GPU_MEMORY,
+            scheduler=scheduler,
+            scheduler_step_per_optim_step=LR_DECAY_BY_STEPS,
         )
         val_loss = validate(
             model,
@@ -816,18 +845,22 @@ def main():
             }
         )
 
-        scheduler.step()
+        if not LR_DECAY_BY_STEPS and scheduler is not None:
+            scheduler.step()
         
         # Save checkpoint
         if NETWORK_SAVE_PERIOD and (epoch + 1) % NETWORK_SAVE_PERIOD == 0:
             checkpoint_path = Path(__file__).parent / f"halfkp_epoch_{epoch+1}.pt"
-            torch.save({
+            save_dict = {
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'train_loss': train_loss,
                 'val_loss': val_loss,
-            }, checkpoint_path)
+            }
+            if scheduler is not None:
+                save_dict['scheduler_state_dict'] = scheduler.state_dict()
+            torch.save(save_dict, checkpoint_path)
             print(f"Checkpoint saved to {checkpoint_path}")
     
     # Save final model
