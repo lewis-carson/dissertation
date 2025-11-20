@@ -5,6 +5,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
+import threading
+import queue
 
 import chess
 import numpy as np
@@ -285,6 +287,7 @@ def create_sparse_dataloader(
     num_workers: int = 0,
     cyclic: bool = False,
     device: Optional[torch.device] = None,
+    epoch_size: Optional[int] = None,
 ):
     """Build a DataLoader backed by the Rust sparse pipeline exposed via PyO3."""
 
@@ -298,6 +301,62 @@ def create_sparse_dataloader(
         num_workers=num_workers,
         device=device,
     )
+
+    # Wrap streaming dataset into a fixed number of batches per epoch when epoch_size is provided
+    if epoch_size is not None and epoch_size > 0:
+        num_batches = (epoch_size + batch_size - 1) // batch_size
+
+        class FixedNumBatchesDataset(torch.utils.data.Dataset):
+            def __init__(self, iterable_ds, num_batches):
+                super().__init__()
+                self.iterable = iterable_ds
+                self.num_batches = num_batches
+                self._iter = None
+                self._prefetch_queue = queue.Queue(maxsize=100)
+                self._prefetch_thread = None
+                self._stop_event = threading.Event()
+                self._started = False
+                self._lock = threading.Lock()
+
+            def _prefetch_worker(self):
+                try:
+                    it = iter(self.iterable)
+                    while not self._stop_event.is_set():
+                        try:
+                            item = next(it)
+                        except StopIteration:
+                            self._prefetch_queue.put(None)
+                            break
+                        self._prefetch_queue.put(item)
+                except Exception as exc:
+                    self._prefetch_queue.put(exc)
+
+            def _start(self):
+                with self._lock:
+                    if not self._started:
+                        self._prefetch_thread = threading.Thread(target=self._prefetch_worker, daemon=True)
+                        self._prefetch_thread.start()
+                        self._started = True
+
+            def __len__(self):
+                return self.num_batches
+
+            def __getitem__(self, idx):
+                self._start()
+                item = self._prefetch_queue.get()
+                if item is None:
+                    raise StopIteration
+                if isinstance(item, Exception):
+                    raise item
+                return item
+
+            def __del__(self):
+                if hasattr(self, "_stop_event"):
+                    self._stop_event.set()
+                if hasattr(self, "_prefetch_thread") and self._prefetch_thread:
+                    self._prefetch_thread.join(timeout=1.0)
+
+        dataset = FixedNumBatchesDataset(dataset, num_batches)
 
     return DataLoader(dataset, batch_size=None)
 def _gather_paths(base_dir, patterns):
@@ -602,7 +661,7 @@ def main():
     LEARNING_RATE = _get_env_value("LEARNING_RATE", 0.1, float)
     NUM_EPOCHS = _get_env_value("NUM_EPOCHS", 600, int)
     GAMMA = _get_env_value("GAMMA", 0.992, float)
-    NUM_WORKERS = max(0, _get_env_value("NUM_WORKERS", 4, int))
+    NUM_WORKERS = max(0, _get_env_value("NUM_WORKERS", 1, int))
     THREADS = max(0, _get_env_value("THREADS", 4, int))
     NETWORK_SAVE_PERIOD = _get_env_value("NETWORK_SAVE_PERIOD", 10, int)
     START_LAMBDA = _get_env_value("START_LAMBDA", 1.0, float)
@@ -616,6 +675,8 @@ def main():
     LR_DECAY_BY_STEPS = _get_env_flag("LR_DECAY_BY_STEPS", False)
     LR_DECAY_STEP_SIZE = max(1, _get_env_value("LR_DECAY_STEP_SIZE", 1000, int))
     LR_DECAY_GAMMA = _get_env_value("LR_DECAY_GAMMA", 0.992, float)
+    EPOCH_SIZE = _get_env_value("EPOCH_SIZE", 100000000, int)
+    VAL_SIZE = _get_env_value("VAL_SIZE", 1000000, int)
 
     if BATCH_SIZE <= 0:
         raise ValueError("BATCH_SIZE must be positive")
@@ -736,6 +797,7 @@ def main():
         num_workers=NUM_WORKERS,
         cyclic=False,
         device=device,
+        epoch_size=VAL_SIZE,
     )
 
     print("\nCreating sparse training dataloader backed by C++ reader...")
@@ -746,6 +808,7 @@ def main():
         num_workers=NUM_WORKERS,
         cyclic=False,
         device=device,
+        epoch_size=EPOCH_SIZE,
     )
     
     # Initialize model
