@@ -658,7 +658,7 @@ def main():
     
     # Hyperparameters (env override friendly)
     BATCH_SIZE = _get_env_value("BATCH_SIZE", 16384, int)
-    LEARNING_RATE = _get_env_value("LEARNING_RATE", 0.1, float)
+    LEARNING_RATE = _get_env_value("LEARNING_RATE", 0.01, float)
     NUM_EPOCHS = _get_env_value("NUM_EPOCHS", 600, int)
     GAMMA = _get_env_value("GAMMA", 0.992, float)
     NUM_WORKERS = max(0, _get_env_value("NUM_WORKERS", 1, int))
