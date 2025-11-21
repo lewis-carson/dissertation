@@ -403,11 +403,11 @@ class HalfKPNetwork(nn.Module):
     def _initialize_weights(self):
         for module in self.modules():
             if isinstance(module, nn.EmbeddingBag):
-                nn.init.xavier_uniform_(module.weight, gain=0.01)
+                nn.init.xavier_uniform_(module.weight, gain=1.0)
                 with torch.no_grad():
                     module.weight[0].zero_()
             elif isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight, gain=0.01)
+                nn.init.xavier_uniform_(module.weight, gain=1.0)
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0.0)
 
