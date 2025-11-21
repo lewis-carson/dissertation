@@ -88,6 +88,10 @@ class LossParams:
     qp_asymmetry: float = 0.0
 
 
+# Scaling factor to convert network output to centipawns (matches nnue-pytorch)
+NNUE2SCORE = 600.0
+
+
 def _tensor_from_numpy(array: np.ndarray, device: torch.device, *, dtype=None) -> torch.Tensor:
     tensor = torch.from_numpy(array)
     if dtype is not None:
@@ -528,7 +532,7 @@ def train_epoch(
                 prepared.black_offsets,
                 prepared.white_weights,
                 prepared.black_weights,
-            )
+            ) * NNUE2SCORE
 
             loss = compute_loss(
                 predictions,
@@ -635,7 +639,7 @@ def validate(model, dataloader, loss_params: LossParams, device, epoch_idx: int,
                 prepared.black_offsets,
                 prepared.white_weights,
                 prepared.black_weights,
-            )
+            ) * NNUE2SCORE
             loss = compute_loss(
                 predictions,
                 prepared.scores,
