@@ -219,12 +219,16 @@ def _flatten_sparse(
     """Convert fixed-width sparse arrays into flattened indices/weights plus offsets."""
 
     indices = indices.to(dtype=torch.long, copy=True)
-    values = values.to(dtype=torch.float32, copy=True)
-
-    mask = values != 0
+    # We ignore the values from the loader because they might be 0.0 if not populated.
+    # For HalfKP, features are binary presence, so weight is 1.0.
+    # We use indices != -1 to find active features.
+    
+    mask = indices != -1
     lengths = mask.sum(dim=1, dtype=torch.long)
     flat_indices = indices[mask]
-    flat_weights = values[mask]
+    
+    # Create weights of 1.0 for all active features
+    flat_weights = torch.ones_like(flat_indices, dtype=torch.float32)
 
     batch_size = indices.size(0)
     total_active = lengths.sum().item()
