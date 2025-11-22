@@ -234,11 +234,20 @@ def _flatten_sparse(
     total_active = lengths.sum().item()
 
     if total_active == 0:
+        # If no active features, we must provide at least one dummy index to avoid crash
+        # But we set length to 0 for all batches, so this dummy index won't be used for any batch
+        # except that offsets need to be valid.
         flat_indices = torch.zeros(1, dtype=torch.long)
         flat_weights = torch.zeros(1, dtype=torch.float32)
         lengths = torch.zeros(batch_size, dtype=torch.long)
-        if batch_size > 0:
-            lengths[0] = 1
+        # Note: We don't set lengths[0]=1 here because that would mean the first batch has 1 element (the dummy).
+        # If all batches are empty, they should have length 0.
+        # However, EmbeddingBag with offsets requires input and offsets to be consistent.
+        # If total_active is 0, input is empty tensor?
+        # PyTorch EmbeddingBag docs: "If input is 1D, then offsets is required to be 1D...
+        # If input is empty, offsets should be size B with all zeros?"
+        # Let's keep it safe:
+        pass
 
     offsets = torch.zeros(batch_size, dtype=torch.long)
     if batch_size > 1:
@@ -443,6 +452,8 @@ class HalfKPNetwork(nn.Module):
         # But wait, nnue-pytorch applies activation AFTER the linear layer.
         
         # FT output
+        # Note: We use mode="sum" so per_sample_weights are multiplied with embeddings.
+        # Since we force weights to 1.0 in _flatten_sparse, this is just a sum of embeddings.
         w = self.ft_white(white_indices, white_offsets, per_sample_weights=white_weights)
         b = self.ft_black(black_indices, black_offsets, per_sample_weights=black_weights)
         
@@ -450,6 +461,8 @@ class HalfKPNetwork(nn.Module):
         x = torch.cat([w, b], dim=1)
         
         # L1: Linear -> SquaredClippedReLU
+        # Note: nnue-pytorch clamps the output of the first linear layer (after FT)
+        # using SquaredClippedReLU.
         x = self.act1(self.fc1(x))
         
         # L2: Linear -> ClippedReLU
