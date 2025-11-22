@@ -381,6 +381,17 @@ def _gather_paths(base_dir, patterns):
     unique.sort()
     return unique
 
+
+class ClippedReLU(nn.Module):
+    def forward(self, x):
+        return torch.clamp(x, 0.0, 1.0)
+
+
+class SquaredClippedReLU(nn.Module):
+    def forward(self, x):
+        return torch.clamp(torch.pow(x, 2.0), 0.0, 1.0)
+
+
 class HalfKPNetwork(nn.Module):
     """HalfKP neural network using embedding bags to mirror nnue-pytorch flow."""
 
@@ -396,7 +407,9 @@ class HalfKPNetwork(nn.Module):
         self.fc2 = nn.Linear(hidden2, hidden3)
         self.fc3 = nn.Linear(hidden3, 1)
 
-        self.activation = nn.ReLU()
+        # Matches nnue-pytorch: Squared Clipped ReLU for first layer, Clipped ReLU for others
+        self.act1 = SquaredClippedReLU()
+        self.act2 = ClippedReLU()
 
         self._initialize_weights()
 
@@ -420,16 +433,25 @@ class HalfKPNetwork(nn.Module):
         white_weights=None,
         black_weights=None,
     ):
-        white_transformed = self.activation(
-            self.ft_white(white_indices, white_offsets, per_sample_weights=white_weights)
-        )
-        black_transformed = self.activation(
-            self.ft_black(black_indices, black_offsets, per_sample_weights=black_weights)
-        )
-
-        x = torch.cat([white_transformed, black_transformed], dim=1)
-        x = self.activation(self.fc1(x))
-        x = self.activation(self.fc2(x))
+        # Feature transformer output is usually clamped in quantized inference,
+        # but in training we often let it flow or clamp it.
+        # nnue-pytorch clamps the output of the first layer (after concatenation and linear).
+        # But wait, nnue-pytorch applies activation AFTER the linear layer.
+        
+        # FT output
+        w = self.ft_white(white_indices, white_offsets, per_sample_weights=white_weights)
+        b = self.ft_black(black_indices, black_offsets, per_sample_weights=black_weights)
+        
+        # Concatenate
+        x = torch.cat([w, b], dim=1)
+        
+        # L1: Linear -> SquaredClippedReLU
+        x = self.act1(self.fc1(x))
+        
+        # L2: Linear -> ClippedReLU
+        x = self.act2(self.fc2(x))
+        
+        # L3: Linear (Output)
         x = self.fc3(x)
 
         return x.squeeze(-1)
@@ -533,6 +555,12 @@ def train_epoch(
                 prepared.white_weights,
                 prepared.black_weights,
             ) * NNUE2SCORE
+
+            if batch_idx % 1000 == 0:
+                print(f"\n[Debug Batch {batch_idx}]")
+                print(f"  Predictions: min={predictions.min().item():.2f}, max={predictions.max().item():.2f}, mean={predictions.mean().item():.2f}")
+                print(f"  Scores: min={prepared.scores.min().item():.2f}, max={prepared.scores.max().item():.2f}, mean={prepared.scores.mean().item():.2f}")
+                print(f"  Outcomes: mean={prepared.outcomes.mean().item():.2f}")
 
             loss = compute_loss(
                 predictions,
